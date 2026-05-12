@@ -1,0 +1,145 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 28 11:17:44 2025
+
+@author: hartv
+"""
+
+import pandas as pd
+import numpy as np
+import datetime
+from pathlib import Path
+import json
+import pickle
+
+def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model, model_start, model_end):
+    
+    ## FTT: Power
+    # Get electricity demand and convert TJ to PJ
+    elec_dem = ener_base.loc[ener_base.TRAD_COMM == 93].groupby('REG_imp').sum()['fuel_use'] / 1000
+    # Calculate FTT year index
+    y = year - ftt_model.ftt_start
+    # Get the index of electricity
+    elec_idx = ftt_model.titles['JTI'].index('8 Electricity')
+    # Assign electricity demand to FTT
+    ftt_model.input['S0']['MEWD'][:, elec_idx, 0, y] = elec_dem[list(ftt_model.titles['RTI'])].values
+    # Overwrite fuel price index after 2019, when price changes are estimated in MINDSET
+    if year > 2019: 
+        # Assign fuel price change to FTT
+        # Assess price changes by FTT fuels
+        # DYNAMIC['delta_price_yoy'] are domestic price changes
+        # The import price changes needs to be calculated from trade flows and domestic price changes
+        # z_bp are the monetary flows between countries
+        # map delta_price_yoy REG_imp to IO_model.IND_BASE REG_exp, use z_bp as weights to calculate price changes, groupby REG_imp
+        fuel_pd = IO_model.IND_BASE.loc[IO_model.IND_BASE.index.get_level_values('TRAD_COMM').isin(ftt_model.ftt_fuel_converter.TRAD_COMM), 'z_bp'].copy()
+        _dpy = self.V.read_var('delta_price_yoy', year, as_df=True).rename(columns={'delta_price_yoy': 'dp'})
+        exp_fuel_pd = _dpy.loc[_dpy.PROD_COMM.isin(ftt_model.ftt_tech_converter.PROD_COMM)].copy()
+        fuel_merged = pd.merge(fuel_pd.reset_index(), exp_fuel_pd, left_on='REG_exp', right_on='REG_imp', how='inner', suffixes=('', '_y'))
+        
+        for tech, sectors in ftt_model.ftt_tech_converter.groupby('T2TI'):
+            # Get relevant sectoral data (prices and output for weighting)
+            sec_price_chng = fuel_merged.loc[fuel_merged.PROD_COMM.isin(sectors.PROD_COMM)]
+
+            weighted_dp = (sec_price_chng.groupby("REG_imp", group_keys=False, dropna=False)
+                            .apply(
+                                lambda g: (g["dp"] * g["z_bp"]).sum() / g["z_bp"].sum()
+                                if g["z_bp"].sum() != 0
+                                else 0,
+                                include_groups=False))
+            tech_idx = ftt_model.titles['T2TI'].index(tech)
+            ftt_model.input['S0']['FPI'][:, tech_idx, 0, y] = weighted_dp[list(ftt_model.titles['RTI'])].values
+    # Overwrite carbon prices (USD / tCO2)
+    for reg in ftt_model.titles['RTI']:
+        c_price = Scenario.carbon_tax_rate_loop(reg)
+        c_price = c_price.loc[c_price.PROD_COMM == 93]
+        for fuel, sectors in ftt_model.ftt_fuel_converter.groupby('ERTI'):
+            # Get relevant sectoral data (prices and output for weighting)
+            sec_c_price = c_price.loc[c_price.TRAD_COMM.isin(sectors.TRAD_COMM)]
+            if (len(sec_c_price) > 0) & (fuel in ftt_model.conv['T2TI_ERTI'].ERTI.values):
+                # Since carbon price is the same for all REG_exp, simply take avg.
+                avg_sec_c_price = sec_c_price.groupby('REG_imp')['ctax'].mean()
+                # Keep if weighted avreage will be needed
+                # weighted_dp = (sec_c_price.groupby("REG_imp", group_keys=False, dropna=False)
+                #                 .apply(
+                #                     lambda g: (g["dp"] * g["z_bp"]).sum() / g["z_bp"].sum()
+                #                     if g["z_bp"].sum() != 0
+                #                     else 0,
+                #                     include_groups=False))
+                
+                # Map fuel to tech
+                tech = ftt_model.conv['T2TI_ERTI'].index[ftt_model.conv['T2TI_ERTI'].ERTI == fuel].values[0]
+                tech_idx = ftt_model.titles['T2TI'].index(tech)
+                reg_idx = ftt_model.titles['RTI'].index(reg)
+                ftt_model.input['S0']['REPPX'][reg_idx, tech_idx, 0, y] = avg_sec_c_price.values[0]
+        
+    # Solve year
+    ftt_model.variables, ftt_model.lags = ftt_model.solve_year(year, y, ftt_model.scenarios)
+    # Populate output container
+    for var in ftt_model.variables:
+        if 'TIME' in ftt_model.dims[var]:
+            ftt_model.output[ftt_model.scenarios][var][:, :, :, y] = ftt_model.variables[var]
+        else:
+            ftt_model.output[ftt_model.scenarios][var][:, :, :, 0] = ftt_model.variables[var]
+    # Overwrite energy demand of the power sector after 2019
+    # FTT power is used to estimate growth in energy demand
+    # Therefore initial values from 2019 are needed
+    if year > model_start:
+        # Take energy demand from previous year
+        ener_base_t0 = self.V.read_var_df('energy_flows', year - 1)
+        # Filter on power sector
+        power_ener_base = ener_base_t0.loc[ener_base_t0.PROD_COMM == '93'].copy()
+        # Get primary energy demand values for t and t-1
+        ftt_energy_dem_t = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, y]
+        ftt_energy_dem_t0 = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, y - 1]
+        # Loop over supplying sectors
+        for sector, fuels in ftt_model.ftt_fuel_converter.groupby('TRAD_COMM'):
+            # Get indices of corresponding fuels
+            fuel_idx = [ftt_model.titles['ERTI'].index(f) for f in fuels.ERTI]
+            # Get fuel demand for the given sectors
+            fuel_demand_t = ftt_energy_dem_t[:, fuel_idx].sum(axis = 1)
+            fuel_demand_t0 = ftt_energy_dem_t0[:, fuel_idx].sum(axis = 1)
+            # Calculate growth
+            ftt_energy_dem_growth =   np.divide(fuel_demand_t, fuel_demand_t0,
+                                                out=np.ones_like(fuel_demand_t),
+                                                where=fuel_demand_t0!=0)
+            ftt_energy_dem_growth = pd.Series(ftt_energy_dem_growth, index = ftt_model.titles['RTI'])
+            # Filter energy data on sector
+            power_ener_sec = power_ener_base.loc[power_ener_base.TRAD_COMM == sector].copy()
+            power_ener_sec = power_ener_sec.rename(columns = {'fuel_use': 'fuel_use_new_adj'})
+
+            power_ener_sec["growth"] = power_ener_sec["REG_imp"].map(ftt_energy_dem_growth)
+            power_ener_sec["fuel_use_new_adj"] = power_ener_sec["fuel_use_new_adj"] * power_ener_sec["growth"]
+            power_ener_sec = power_ener_sec.drop('growth', axis = 1)
+            power_ener_sec['PROD_COMM'] = power_ener_sec['PROD_COMM'].astype(int)
+            power_ener_sec['TRAD_COMM'] = power_ener_sec['TRAD_COMM'].astype(int)
+            # Make the indices aligned, apply update, write back
+            _ef = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
+            power_ener_sec = power_ener_sec.set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
+            # Update values based on FTT adjusted energy demand
+            _ef.update(power_ener_sec)   # updates all overlapping columns in place
+            self.V.write_var_df('energy_flows', year, _ef.reset_index())
+    # Assess investment
+    # Calculate changes in investment
+    ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y][:, np.newaxis, :]
+    ftt_model.investment[year] = (np.array(ftt_model.ftt_inv_converter[list(ftt_model.titles['T2TI'])])[np.newaxis, :, :] * 
+                  ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y][:, np.newaxis, :]).sum(axis = 2)
+    # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
+    ftt_model.investment[year] = ftt_model.investment[year] * 1.33 * 1.17
+
+
+    # Export results in the last year
+    if year == model_end:
+        # Update scenario log
+        scenarios_log = {}
+        scenarios_log['S0'] = {}
+        scenarios_log['S0']['run'] = datetime.datetime.timestamp(datetime.datetime.now())
+        scenarios_log['S0']['description'] = "Test Scenario, provided by Cambridge Econometrics"
+        scenarios_log['S0']['years'] = [str(x) for x in ftt_model.timeline]
+        # Save metadata on current model run
+        with open(Path('.') / 'MINDSET_FTT_Power' / 'Output' / 'Scenarios.json', 'w') as f:
+            json.dump(scenarios_log, f)
+
+        with open(Path('.') / 'MINDSET_FTT_Power' / 'Output' / 'Results.pickle', 'wb') as f:
+            pickle.dump(ftt_model.output, f)
+            
+    return ftt_model, DYNAMIC
