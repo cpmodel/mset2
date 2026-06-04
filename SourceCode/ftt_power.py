@@ -95,6 +95,9 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         # Get primary energy demand values for t and t-1
         ftt_energy_dem_t = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, y]
         ftt_energy_dem_t0 = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, y - 1]
+        # Read energy_flows once before the loop; all sector updates are applied in-place,
+        # then written back once after the loop (avoids N reads+writes for N fuel sectors).
+        _ef = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
         # Loop over supplying sectors
         for sector, fuels in ftt_model.ftt_fuel_converter.groupby('TRAD_COMM'):
             # Get indices of corresponding fuels
@@ -116,12 +119,11 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             power_ener_sec = power_ener_sec.drop('growth', axis = 1)
             power_ener_sec['PROD_COMM'] = power_ener_sec['PROD_COMM'].astype(int)
             power_ener_sec['TRAD_COMM'] = power_ener_sec['TRAD_COMM'].astype(int)
-            # Make the indices aligned, apply update, write back
-            _ef = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
             power_ener_sec = power_ener_sec.set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
-            # Update values based on FTT adjusted energy demand
-            _ef.update(power_ener_sec)   # updates all overlapping columns in place
-            self.V.write_var_df('energy_flows', year, _ef.reset_index())
+            # Accumulate updates into _ef (no write until all sectors are done)
+            _ef.update(power_ener_sec)
+        # Single write after all sector updates are applied
+        self.V.write_var_df('energy_flows', year, _ef.reset_index())
     # Assess investment
     # Reorder MWIY columns to match ftt_inv_converter, then map to MRIO sectors.
     _mwiy_raw = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y]
