@@ -57,29 +57,25 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         ftt_model._mset_fpi = fpi
     # Carbon price: per-(region, technology) ctax in EUR2015/tCO2.
     # model_class.solve_year() applies the EUR2015→USD2013 conversion using current-year FTT exchange-rate variables.
-    for reg in ftt_model.titles['RTI']:
-        c_price = Scenario.carbon_tax_rate_loop(reg)
-        c_price = c_price.loc[c_price.PROD_COMM == 93]
-        for fuel, sectors in ftt_model.ftt_fuel_converter.groupby('ERTI'):
-            # Get relevant sectoral data (prices and output for weighting)
-            sec_c_price = c_price.loc[c_price.TRAD_COMM.isin(sectors.TRAD_COMM)]
-            if (len(sec_c_price) > 0) & (fuel in ftt_model.conv['T2TI_ERTI'].ERTI.values):
-                # Since carbon price is the same for all REG_exp, simply take avg.
-                avg_sec_c_price = sec_c_price.groupby('REG_imp')['ctax'].mean()
-                # Keep if weighted avreage will be needed
-                # weighted_dp = (sec_c_price.groupby("REG_imp", group_keys=False, dropna=False)
-                #                 .apply(
-                #                     lambda g: (g["dp"] * g["z_bp"]).sum() / g["z_bp"].sum()
-                #                     if g["z_bp"].sum() != 0
-                #                     else 0,
-                #                     include_groups=False))
-                
-                # Map fuel to tech
-                tech = ftt_model.conv['T2TI_ERTI'].index[ftt_model.conv['T2TI_ERTI'].ERTI == fuel].values[0]
-                tech_idx = ftt_model.titles['T2TI'].index(tech)
-                reg_idx = ftt_model.titles['RTI'].index(reg)
-                ftt_model.input['S0']['REPPX'][reg_idx, tech_idx, 0, y] = avg_sec_c_price.values[0]
-        
+    c_price_power = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()
+    reppx_arr = np.zeros((n_reg, n_tech, 1))
+    for fuel, sectors in ftt_model.ftt_fuel_converter.groupby('ERTI'):
+        if fuel not in ftt_model.conv['T2TI_ERTI'].ERTI.values:
+            continue
+        sec_c_price = c_price_power.loc[c_price_power.TRAD_COMM.isin(sectors.TRAD_COMM)]
+        if len(sec_c_price) == 0:
+            continue
+        avg_by_reg = sec_c_price.groupby('REG_imp')['ctax'].mean()
+        tech = ftt_model.conv['T2TI_ERTI'].index[
+            ftt_model.conv['T2TI_ERTI'].ERTI == fuel
+        ].values[0]
+        tech_idx = ftt_model.titles['T2TI'].index(tech)
+        for reg_idx, reg_short in enumerate(_rti_short):
+            if reg_short in avg_by_reg.index:
+                reppx_arr[reg_idx, tech_idx, 0] = avg_by_reg[reg_short]
+    if np.any(reppx_arr != 0):
+        ftt_model._mset_reppx = reppx_arr
+    # else: leave _mset_reppx as None → CO2taxP stays zero (correct for no-tax years)
     # Solve year
     ftt_model.variables, ftt_model.lags = ftt_model.solve_year(year, y, ftt_model.scenarios)
     # Populate output container
