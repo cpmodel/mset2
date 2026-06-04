@@ -15,6 +15,7 @@ import pickle
 def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model, model_start, model_end):
     
     ## FTT: Power
+    _rti_short = list(ftt_model.titles['RTI_short'])
     # Get electricity demand and convert TJ to PJ
     elec_dem = ener_base.loc[ener_base.TRAD_COMM == 93].groupby('REG_imp').sum()['fuel_use'] / 1000
     # Calculate FTT year index
@@ -22,9 +23,10 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
     # Get the index of electricity
     elec_idx = ftt_model.titles['JTI'].index('8 Electricity')
     # Assign electricity demand to FTT
-    ftt_model.input['S0']['MEWD'][:, elec_idx, 0, y] = elec_dem[list(ftt_model.titles['RTI'])].values
+    ftt_model.input['S0']['MEWD'][:, elec_idx, 0, y]  = elec_dem[list(ftt_model.titles['RTI_short'])].values
+    ftt_model.input['S0']['MEWDX'][:, elec_idx, 0, y] = elec_dem[list(ftt_model.titles['RTI_short'])].values
     # Overwrite fuel price index after 2019, when price changes are estimated in MINDSET
-    if year > 2019: 
+    if year > 2019:
         # Assign fuel price change to FTT
         # Assess price changes by FTT fuels
         # DYNAMIC['delta_price_yoy'] are domestic price changes
@@ -102,7 +104,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             ftt_energy_dem_growth =   np.divide(fuel_demand_t, fuel_demand_t0,
                                                 out=np.ones_like(fuel_demand_t),
                                                 where=fuel_demand_t0!=0)
-            ftt_energy_dem_growth = pd.Series(ftt_energy_dem_growth, index = ftt_model.titles['RTI'])
+            ftt_energy_dem_growth = pd.Series(ftt_energy_dem_growth, index = ftt_model.titles['RTI_short'])
             # Filter energy data on sector
             power_ener_sec = power_ener_base.loc[power_ener_base.TRAD_COMM == sector].copy()
             power_ener_sec = power_ener_sec.rename(columns = {'fuel_use': 'fuel_use_new_adj'})
