@@ -56,6 +56,10 @@ Functions included:
         Main solution function for the module
 """
 
+# Standard library imports
+import configparser
+from pathlib import Path
+
 # Third party imports
 import numpy as np
 
@@ -71,6 +75,25 @@ from MINDSET_FTT_Power.SourceCode.Power.ftt_p_surv import survival_function
 from MINDSET_FTT_Power.SourceCode.Power.ftt_p_shares import shares
 from MINDSET_FTT_Power.SourceCode.Power.ftt_p_costc import cost_curves
 
+
+
+# Settings parsed once at import time ÔÇö not per solve() call
+_PACKAGE_ROOT      = Path(__file__).parents[2]
+_config            = configparser.ConfigParser()
+_config.read(str(_PACKAGE_ROOT / "settings.ini"))
+
+_PRSC_BASE_YEAR      = int(_config.get('settings', 'prsc_base_year',      fallback='2013'))
+_EX_BASE_YEAR        = int(_config.get('settings', 'ex_base_year',        fallback='2018'))
+_PRSC_DEFL_YEAR      = int(_config.get('settings', 'prsc_defl_year',      fallback='2015'))
+_RLDC_START_YEAR     = int(_config.get('settings', 'rldc_start_year',     fallback='2018'))
+_BCET_COPY_RANGE_END = int(_config.get('settings', 'bcet_copy_range_end', fallback='17'))
+_USD_EUR_RATE        = float(_config.get('settings', 'usd_eur_rate',      fallback='1.0018'))
+
+_PRSC_VAR      = f"PRSC{str(_PRSC_BASE_YEAR)[2:]}"   # e.g. "PRSC13"
+_PRSC_EX_VAR   = f"PRSC{str(_EX_BASE_YEAR)[2:]}"     # e.g. "PRSC18"
+_EX_VAR        = f"EX{str(_EX_BASE_YEAR)[2:]}"       # e.g. "EX18"
+_REX_VAR       = f"REX{str(_EX_BASE_YEAR)[2:]}"      # e.g. "REX18"
+_PRSC_DEFL_VAR = f"PRSC{str(_PRSC_DEFL_YEAR)[2:]}"   # e.g. "PRSC15"
 
 
 # %% main function
@@ -141,10 +164,10 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
 
     # Copy over PRSC/EX values
 
-    data['PRSC18'] = np.copy(time_lag['PRSC18'] )
-    data['EX18'] = np.copy(time_lag['EX18'] )
-    data['PRSC15'] = np.copy(time_lag['PRSC15'] )
-    data["REX18"] = np.copy(time_lag["REX18"])
+    data[_PRSC_EX_VAR] = np.copy(time_lag[_PRSC_EX_VAR])
+    data[_EX_VAR]      = np.copy(time_lag[_EX_VAR])
+    data[_PRSC_DEFL_VAR] = np.copy(time_lag[_PRSC_DEFL_VAR])
+    data[_REX_VAR]     = np.copy(time_lag[_REX_VAR])
     data['FPIX'][data['FPIX'] == 0] = 1
     time_lag['FPIX'][time_lag['FPIX'] == 0] = 1
     # Increase fuel prices
@@ -155,13 +178,13 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
     T_Scal = 10      # Time scaling factor used in the share dynamics
 
     # Initialisation, which corresponds to lines 389 to 556 in fortran
-    if year == 2013:
-        data['PRSC13'] = np.copy(data['PRSCX'])
+    if year == _PRSC_BASE_YEAR:
+        data[_PRSC_VAR] = np.copy(data['PRSCX'])
 
-    if year == 2018:
-        data['PRSC18'] = np.copy(data['PRSCX'])
-        data['EX18'] = np.copy(data['EXX'])
-        data['REX18'] = np.copy(data['REXX'])
+    if year == _EX_BASE_YEAR:
+        data[_PRSC_EX_VAR] = np.copy(data['PRSCX'])
+        data[_EX_VAR]      = np.copy(data['EXX'])
+        data[_REX_VAR]     = np.copy(data['REXX'])
 
         data['MEWL'][:, :, 0] = data["MWLO"][:, :, 0]
         data['MEWK'][:, :, 0] = np.divide(data['MEWG'][:, :, 0], data['MEWL'][:, :, 0],
@@ -255,15 +278,12 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
     #%%
     # Up to the last year of historical market share data
     elif year <= histend['MEWG']:
-        if year == 2015: 
-            data['PRSC15'] = np.copy(data['PRSCX'])
+        if year == _PRSC_DEFL_YEAR:
+            data[_PRSC_DEFL_VAR] = np.copy(data['PRSCX'])
 
 
-        # Set starting values for MERC
-        data['MERC'][:, 0, 0] = 0.255
-        data['MERC'][:, 1, 0] = 5.689
-        data['MERC'][:, 2, 0] = 0.4246
-        data['MERC'][:, 3, 0] = 3.374
+        # Set starting values for MERC from lagged data (avoids hardcoded floats)
+        data['MERC'][:, :4, 0] = time_lag['MERC'][:, :4, 0]
         data['MERC'][:, 4, 0] = 0.001
         data['MERC'][:, 7, 0] = 0.001
         # Calculate electricty trade shares
@@ -277,7 +297,7 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
 #            loadfac = data['MWLO'][:, :, 0]
 #        data['MEWL'][:, :, 0] = np.copy(loadfac)
 
-        if year > 2018: 
+        if year > _EX_BASE_YEAR:
             data['MEWL'][:, :, 0] = time_lag['MEWL'][:, :, 0].copy()
 
         cond = np.logical_and(data['MEWL'][:, :, 0] < 0.01, data['MWLO'][:, :, 0] > 0.0)
@@ -300,14 +320,14 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
 
 
         # Call RLDC function for capacity and load factor by LB, and storage costs
-        if year >= 2018:
+        if year >= _RLDC_START_YEAR:
 
             # 1 and 2 -- Estimate RLDC and storage parameters
             data = rldc(data, time_lag, iter_lag, year, titles)
 
             # 3--- Call dispatch routine to connect market shares to load bands
             # Call DSPCH function to dispatch flexible capacity based on MC
-            if year == 2018:
+            if year == _RLDC_START_YEAR:
                 mslb, mllb, mes1, mes2 = dspch(data['MWDD'], data['MEWS'], data['MKLB'], data['MCRT'],
                                         data['MEWL'], data['MWMC'], data['MMCD'],
                                         len(titles['RTI']), len(titles['T2TI']), len(titles['LBTI']))
@@ -321,12 +341,12 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
             data['MES2'] = mes2
             
             # Change currency from EUR2015 to USD2013
-            if year >= 2015:
-                # usa_idx = titles['RTI_short'].index('USA')
-                data['MSSP'][:, :, 0] = data['MSSP'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis])/ 1.0018
-                data['MLSP'][:, :, 0] = data['MLSP'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis])/ 1.0018
-                data['MSSM'][:, :, 0] = data['MSSM'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis])/ 1.0018
-                data['MLSM'][:, :, 0] = data['MLSM'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis])/ 1.0018
+            if year >= _PRSC_DEFL_YEAR:
+                _prsc_ratio = data[_PRSC_VAR][:, 0, 0, np.newaxis] / data[_PRSC_DEFL_VAR][:, 0, 0, np.newaxis]
+                data['MSSP'][:, :, 0] = data['MSSP'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
+                data['MLSP'][:, :, 0] = data['MLSP'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
+                data['MSSM'][:, :, 0] = data['MSSM'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
+                data['MLSM'][:, :, 0] = data['MLSM'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
 
             # TODO: This is not per se correct but it's how it is in E3ME
             else:
@@ -457,7 +477,7 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
             data["MEWW"][0, :, 0] = time_lag['MEWW'][0, :, 0] + dw
 
             # Copy over the technology cost categories that do not change (all except prices which are updated through learning-by-doing below)
-            data['BCET'][:, :, 1:17] = time_lag['BCET'][:, :, 1:17].copy()
+            data['BCET'][:, :, 1:_BCET_COPY_RANGE_END] = time_lag['BCET'][:, :, 1:_BCET_COPY_RANGE_END].copy()
 
             # Store gamma values in the cost matrix (in case it varies over time)
             data['BCET'][:, :, c2ti['21 Gamma ($/MWh)']] = data['MGAM'][:, :, 0]
@@ -641,13 +661,12 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
             # Call RLDC function for capacity and load factor by LB, and storage costs
             data = rldc(data, time_lag, data_dt, year, titles)
             
-            # Change currency from EUR2015 to USD2013 (This is wrong, but in terms of logic and by misstating currency year for storage)
-            # usa_idx = titles['RTI_short'].index('USA')
-
-            data['MSSP'][:, :, 0] = data['MSSP'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis]) / 1.0018
-            data['MLSP'][:, :, 0] = data['MLSP'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis]) / 1.0018
-            data['MSSM'][:, :, 0] = data['MSSM'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis]) / 1.0018
-            data['MLSM'][:, :, 0] = data['MLSM'][:, :, 0] * (data['PRSC13'][:, 0, 0, np.newaxis]/data['PRSC15'][:, 0, 0, np.newaxis]) / 1.0018
+            # Change currency from EUR2015 to USD2013 (acknowledged approximation)
+            _prsc_ratio = data[_PRSC_VAR][:, 0, 0, np.newaxis] / data[_PRSC_DEFL_VAR][:, 0, 0, np.newaxis]
+            data['MSSP'][:, :, 0] = data['MSSP'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
+            data['MLSP'][:, :, 0] = data['MLSP'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
+            data['MSSM'][:, :, 0] = data['MSSM'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
+            data['MLSM'][:, :, 0] = data['MLSM'][:, :, 0] * _prsc_ratio / _USD_EUR_RATE
 
 
             # =================================================================
@@ -788,7 +807,7 @@ def solve(data, time_lag, iter_lag, titles, conv, histend, year, domain):
            
 
             # Copy over the technology cost categories. We update the investment and capacity factors below
-            data['BCET'][:, :, 1:17] = time_lag['BCET'][:, :, 1:17].copy()
+            data['BCET'][:, :, 1:_BCET_COPY_RANGE_END] = time_lag['BCET'][:, :, 1:_BCET_COPY_RANGE_END].copy()
 
             # Store gamma values in the cost matrix (in case it varies over time)
             data['BCET'][:, :, c2ti['21 Gamma ($/MWh)']] = data['MGAM'][:, :, 0]
