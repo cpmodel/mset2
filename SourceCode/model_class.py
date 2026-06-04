@@ -81,13 +81,11 @@ from SourceCode.GDP import GDP
 from SourceCode.results import results
 from SourceCode.variables import variables_table
 from SourceCode.normal_output import normal_output_mod
-from SourceCode.ftt_power import solve_year_ftt
 from SourceCode.cost_curves import cost_curves
 from SourceCode.utils import temporary_storage
 from SourceCode.utils import logging
 from SourceCode.utils import MRIO_df_to_vec, MRIO_vec_to_df, MRIO_mat_to_df
 from SourceCode.initiate_modules import initiate_modules
-from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
 
 import warnings
 
@@ -349,7 +347,10 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            
+            from SourceCode.ftt_power import solve_year_ftt
+            from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
+            self._solve_year_ftt = solve_year_ftt
+
             # Instantiate the run
             self.ftt_model = ftt()
             
@@ -429,7 +430,7 @@ class ModelRun:
             'dq_exog_gov_prev': np.zeros((len(self.EXOG_VARS.R)*len(self.EXOG_VARS.P))),
             'dq_supply_constraint_no_empl': np.zeros((len(self.EXOG_VARS.R)*len(self.EXOG_VARS.P))),
             'fuel_price': pd.DataFrame(),
-            'cbam_incidence': {}
+            'cbam_incidence': {},
         }
         
         self.DYNAMIC['PROJECTION_OUTPUT'] = self.EXOG_VARS.PROJECTION_OUTPUT
@@ -1068,13 +1069,9 @@ class ModelRun:
     
         if self.ftt_run:
             ## FTT: Power
-            ftt_model, DYNAMIC = solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
-                                                          ener_base, IO_model, self.model_start, self.model_end)
+            ftt_model, DYNAMIC = self._solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
+                                                               ener_base, IO_model, self.model_start, self.model_end)
                 
-        # for i in range(len(ftt_model.titles['RTI'])):
-        #     print(ftt_model.titles['RTI'][i])
-        #     pd.DataFrame(ftt_model.output['S0']['MEWG'][i, :, 0, :], index = ftt_model.titles['T2TI'], columns = range(2010, 2051)).T.plot()
-    
         ## EMISSIONS
     
         Energy_emissions = ener_balance(EXOG_VARS, Scenario, self.refining_sectors)
