@@ -366,23 +366,27 @@ class ModelRun:
             for y, year in enumerate(setup_years):
                 # Solve year
                 self.ftt_model.variables, self.ftt_model.lags = self.ftt_model.solve_year(year, y, self.ftt_model.scenarios)
-                
+
                 # Populate output container
                 for var in self.ftt_model.variables:
                     if 'TIME' in self.ftt_model.dims[var]:
                         self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, y] = self.ftt_model.variables[var]
                     else:
                         self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, 0] = self.ftt_model.variables[var]
-                    
+
                 # Assess investment
-                # Calculate changes in investment
-                self.ftt_model.investment[year] = (np.array(self.ftt_model.ftt_inv_converter[list(self.ftt_model.titles['T2TI'])])[np.newaxis, :, :] * 
-                              self.ftt_model.output[self.ftt_model.scenarios]['MWIY'][:, :, 0, y][:, np.newaxis, :]).sum(axis = 2)
+                # Reorder MWIY columns to match ftt_inv_converter, then map to MRIO sectors.
+                _mwiy_raw = self.ftt_model.output[self.ftt_model.scenarios]['MWIY'][:, :, 0, y]
+                _mwiy12 = pd.DataFrame(_mwiy_raw, columns=list(self.ftt_model.titles['T2TI'])) \
+                            .reindex(columns=list(self.ftt_model.ftt_inv_converter.columns)).values
+                self.ftt_model.investment[year] = (
+                    np.array(self.ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
+                    _mwiy12[:, np.newaxis, :]
+                ).sum(axis=2)
                 # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * 1.33 * 1.17
 
-        
-        
+
         #%%
         
         #region 2_Solving_the_model [rgba(52,152,219,0.10)]

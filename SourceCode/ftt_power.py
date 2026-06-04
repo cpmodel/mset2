@@ -121,13 +121,16 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             _ef.update(power_ener_sec)   # updates all overlapping columns in place
             self.V.write_var_df('energy_flows', year, _ef.reset_index())
     # Assess investment
-    # Calculate changes in investment
-    ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y][:, np.newaxis, :]
-    ftt_model.investment[year] = (np.array(ftt_model.ftt_inv_converter[list(ftt_model.titles['T2TI'])])[np.newaxis, :, :] * 
-                  ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y][:, np.newaxis, :]).sum(axis = 2)
+    # Reorder MWIY columns to match ftt_inv_converter, then map to MRIO sectors.
+    _mwiy_raw = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y]
+    _mwiy12 = pd.DataFrame(_mwiy_raw, columns=list(ftt_model.titles['T2TI'])) \
+                .reindex(columns=list(ftt_model.ftt_inv_converter.columns)).values
+    ftt_model.investment[year] = (
+        np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
+        _mwiy12[:, np.newaxis, :]
+    ).sum(axis=2)
     # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
     ftt_model.investment[year] = ftt_model.investment[year] * 1.33 * 1.17
-
 
     # Export results in the last year
     if year == model_end:
