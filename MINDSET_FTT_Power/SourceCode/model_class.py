@@ -20,7 +20,7 @@ import numpy as np
 from tqdm import tqdm
 
 from ftt_source.paths import set_paths
-from ftt_source.Power.ftt_p_main import solve as ftt_p_solve
+from ftt_source.Power.ftt_p_main import solve as ftt_p_solve, build_power_settings
 
 # Support modules
 import MINDSET_FTT_Power.SourceCode.support.input_functions as in_f
@@ -120,6 +120,7 @@ class ModelRun:
         # Load classification titles
         self.titles = titles_f.load_titles()
         self.conv = titles_f.load_converters()
+        self.power_settings = build_power_settings(self.titles, config)
 
         # Load variable dimensions
         self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims()
@@ -256,10 +257,10 @@ class ModelRun:
                 variables['FPIX'] = fpix_lag * (1.0 + fpi)
                 self._fpix_carry  = variables['FPIX'].copy()
 
-            # Call FTT_Standalone (drops iter_lag and conv; adds settings_path)
+            # Call FTT_Standalone
             variables = ftt_p_solve(
                 variables, time_lags, self.titles, self.histend,
-                tl[y], self.domain, settings_path=self.ftt_settings_path
+                tl[y], self.domain, self.power_settings
             )
 
         if not any(True for x in modules_list if x in self.ftt_modules):
