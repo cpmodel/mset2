@@ -400,7 +400,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     flow_price_impact_hh.loc[flow_price_impact_hh['flow_price_impact_hh']> 5, 'flow_price_impact_hh'] = 5.0
 
     self.V.write_var('flow_price_impact_intermediates', year, flow_price_impact_intermediates, from_df=True)
-    self.V.write_var('flow_price_impact_hh', year, flow_price_impact_hh, from_df=True)
+    self.V.write_var('flow_price_impact_hh', year, flow_price_impact_hh.rename(columns={'PROD_COMM': 'FD'}), from_df=True)
 
     BTA_cou = BTA(Scenario, self.bta, EXOG_VARS.R, self.temp, EXOG_VARS)
     if year > self.model_start:
@@ -409,7 +409,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         cbam_incidence = BTA_cou.calc_cbam_incidence(EXOG_VARS.IND_BASE, DYNAMIC['carbon_content'], EXOG_VARS.HH_BASE, EXOG_VARS.FCF_BASE, EXOG_VARS.GOV_BASE)
     # cbam incidence ['REG_imp','REG_exp','PROD_COMM','TRAD_COMM','cbam_cost']
     cbam_cost_dfs = {
-        'intermediates': cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy(),
+        'intermediates': cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy().astype({'PROD_COMM': int, 'TRAD_COMM': int}),
         'hh':            cbam_incidence[cbam_incidence['PROD_COMM']=="FD_1"].copy(),
         'fcf':           cbam_incidence[cbam_incidence['PROD_COMM']=="FD_4"].copy(),
         'gov':           cbam_incidence[cbam_incidence['PROD_COMM']=="FD_3"].copy(),
@@ -1259,16 +1259,18 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         Energy_emissions.update_ind_base(A_trade, self.V.read_var("output", year-1) + self.V.read_var("dq_total", year))
         tax_incidence = Energy_emissions.calculate_tax_incidence()
         self.V.write_var_df('emission_cost_intermediates', year, tax_incidence['tax_incidence_intermediates'])
-        self.V.write_var_df('emission_cost_hh', year, tax_incidence['tax_incidence_hh'])
-        self.V.write_var_df('emission_cost_fcf', year, tax_incidence['tax_incidence_fcf'])
-        self.V.write_var_df('emission_cost_gov', year, tax_incidence['tax_incidence_gov'])
+        self.V.write_var_df('emission_cost_hh',  year, tax_incidence['tax_incidence_hh'].rename(columns={'PROD_COMM': 'FD'}))
+        self.V.write_var_df('emission_cost_fcf', year, tax_incidence['tax_incidence_fcf'].rename(columns={'PROD_COMM': 'FD'}))
+        self.V.write_var_df('emission_cost_gov', year, tax_incidence['tax_incidence_gov'].rename(columns={'PROD_COMM': 'FD'}))
 
         cbam_incidence = BTA_cou.calc_cbam_incidence(ind_ener_glo, DYNAMIC['carbon_content'], EXOG_VARS.HH_BASE, EXOG_VARS.FCF_BASE, EXOG_VARS.GOV_BASE)
         # cbam incidence ['REG_imp','REG_exp','PROD_COMM','TRAD_COMM','cbam_cost']
-        self.V.write_var_df('cbam_cost_intermediates', year, cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy())
-        self.V.write_var_df('cbam_cost_hh', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_1"].copy())
-        self.V.write_var_df('cbam_cost_fcf', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_4"].copy())
-        self.V.write_var_df('cbam_cost_gov', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_3"].copy())
+        _cbam_interm = cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy()
+        _cbam_interm = _cbam_interm.astype({'PROD_COMM': int, 'TRAD_COMM': int})
+        self.V.write_var_df('cbam_cost_intermediates', year, _cbam_interm)
+        self.V.write_var_df('cbam_cost_hh',  year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_1"].rename(columns={'PROD_COMM':'FD'}))
+        self.V.write_var_df('cbam_cost_fcf', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_4"].rename(columns={'PROD_COMM':'FD'}))
+        self.V.write_var_df('cbam_cost_gov', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_3"].rename(columns={'PROD_COMM':'FD'}))
 
         # calculate within iteration delta of collected tax revenues
         dtax_rev = Tax_rev.calc_tax_iter_cond(emission_cost_old, self.V.read_var_df('emission_cost_intermediates', year))

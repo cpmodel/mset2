@@ -59,20 +59,23 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
     # model_class.solve_year() applies the EUR2015→USD2013 conversion using current-year FTT exchange-rate variables.
     c_price_power = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()
     reppx_arr = np.zeros((n_reg, n_tech, 1))
+    # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
+    _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
+    _t2ti_list = list(ftt_model.titles['T2TI'])
+    _erti_to_t2ti_idxs = {}
+    for _, row in _conv_csv.iterrows():
+        _erti_to_t2ti_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
     for fuel, sectors in ftt_model.ftt_fuel_converter.groupby('ERTI'):
-        if fuel not in ftt_model.conv['T2TI_ERTI'].ERTI.values:
+        if fuel not in _erti_to_t2ti_idxs:
             continue
         sec_c_price = c_price_power.loc[c_price_power.TRAD_COMM.isin(sectors.TRAD_COMM)]
         if len(sec_c_price) == 0:
             continue
         avg_by_reg = sec_c_price.groupby('REG_imp')['ctax'].mean()
-        tech = ftt_model.conv['T2TI_ERTI'].index[
-            ftt_model.conv['T2TI_ERTI'].ERTI == fuel
-        ].values[0]
-        tech_idx = ftt_model.titles['T2TI'].index(tech)
-        for reg_idx, reg_short in enumerate(_rti_short):
-            if reg_short in avg_by_reg.index:
-                reppx_arr[reg_idx, tech_idx, 0] = avg_by_reg[reg_short]
+        for tech_idx in _erti_to_t2ti_idxs[fuel]:
+            for reg_idx, reg_short in enumerate(_rti_short):
+                if reg_short in avg_by_reg.index:
+                    reppx_arr[reg_idx, tech_idx, 0] = avg_by_reg[reg_short]
     if np.any(reppx_arr != 0):
         ftt_model._mset_reppx = reppx_arr
     # else: leave _mset_reppx as None → CO2taxP stays zero (correct for no-tax years)
