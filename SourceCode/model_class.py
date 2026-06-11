@@ -199,8 +199,6 @@ class ModelRun:
     
     def __init__(self):
 
-        istruefalse = lambda x: True if x == 'True' else False
-
         # read in the arguments here
         self.settingsini = False
         if len(sys.argv) > 1:
@@ -219,16 +217,17 @@ class ModelRun:
         # define years to run the model for
         self.years = np.arange(self.model_start, self.model_end + 1)
         # ! keep TRUE unless want to turn-off within year iter
-        self.SWITCH_WITHIN_YEAR_LOOP = bool(config.get('settings', 'SWITCH_WITHIN_YEAR_LOOP'))
-        self.mrio_inverse_recalculate = bool(config.get('settings', 'mrio_inverse_recalculate'))
+        self.SWITCH_WITHIN_YEAR_LOOP = config.getboolean('settings', 'SWITCH_WITHIN_YEAR_LOOP')
+        self.mrio_inverse_recalculate = config.getboolean('settings', 'mrio_inverse_recalculate')
         # TODO these are possibilities to store tax_incidence or dL_ener in file if they are not changing between scenarios
         # TODO these are NOT currently used
         self.tax_incidence_file = str(config.get('settings', 'tax_incidence_file'))    
         self.dL_ener_file = str(config.get('settings', 'dL_ener_file')) 
         # TODO check whether / how this is still relevant?
         self.bta = int(config.get('settings', 'bta'))
-        self.CALIBRATING = istruefalse(config.get('settings', 'CALIBRATING'))
-        self.ftt_run = istruefalse(config.get('settings', 'ftt_run'))
+        self.CALIBRATING = config.getboolean('settings', 'CALIBRATING')
+        self.ftt_run = config.getboolean('settings', 'ftt_run')
+        print(f"FTT run is set to {self.ftt_run}")
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
@@ -236,7 +235,7 @@ class ModelRun:
         self.COND_PRICE = int(config.get('settings','COND_PRICE')) / 100
         self.ITER_MAX = int(config.get('settings','ITER_MAX'))
 
-        self.WRITE_AT_END = bool(config.get('settings', 'WRITE_AT_END'))
+        self.WRITE_AT_END = config.getboolean('settings', 'WRITE_AT_END')
         
         self.ftt_model = None
 
