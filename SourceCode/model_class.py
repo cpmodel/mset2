@@ -227,7 +227,6 @@ class ModelRun:
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = config.getboolean('settings', 'CALIBRATING')
         self.ftt_run = config.getboolean('settings', 'ftt_run')
-        print(f"FTT run is set to {self.ftt_run}")
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
