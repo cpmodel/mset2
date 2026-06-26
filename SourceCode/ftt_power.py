@@ -38,10 +38,10 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
     ftt_model.input['S0']['MEWD'][:, elec_idx, 0, y]  = elec_dem[list(ftt_model.titles['RTI_short'])].values
     ftt_model.input['S0']['MEWDX'][:, elec_idx, 0, y] = elec_dem[list(ftt_model.titles['RTI_short'])].values
     # Overwrite fuel price index after 2019, when price changes are estimated in MINDSET.
-    # FPI is stored on the model object (_mset_fpi) rather than in the FTT input dict,
-    # so no change to FTT_Standalone's VariableListing.csv is needed.
-    # model_class.py converts _mset_fpi to FPIX and injects it into variables before
-    # calling ftt_p_solve each year.
+    # fuel_price_index_change is stored on the model object (_mset_fuel_price_index_change)
+    # rather than in the FTT input dict, so no change to FTT_Standalone's VariableListing.csv
+    # is needed. model_class.py converts _mset_fuel_price_index_change to FPIX and injects it
+    # into variables before calling ftt_p_solve each year.
     if year > 2019:
         # Assess price changes by FTT fuels.
         # DYNAMIC['delta_price_yoy'] are domestic price changes.
@@ -51,7 +51,8 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         exp_fuel_pd = _dpy.loc[_dpy.PROD_COMM.isin(ftt_model.ftt_tech_converter.PROD_COMM)].copy()
         fuel_merged = pd.merge(fuel_pd.reset_index(), exp_fuel_pd, left_on='REG_exp', right_on='REG_imp', how='inner', suffixes=('', '_y'))
 
-        fpi = np.zeros((n_reg, n_tech, 1))
+        # Year-on-year fractional change in fuel price per (region, T2TI technology); feeds FTT's cumulative FPIX.
+        fuel_price_index_change = np.zeros((n_reg, n_tech, 1))
 
         for tech, sectors in ftt_model.ftt_tech_converter.groupby('T2TI'):
             sec_price_chng = fuel_merged.loc[fuel_merged.PROD_COMM.isin(sectors.PROD_COMM)]
@@ -63,9 +64,9 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
                                 include_groups=False))
             tech_idx = ftt_model.titles['T2TI'].index(tech)
             weighted_dp = weighted_dp.reindex(_rti_short).fillna(0.0)
-            fpi[:, tech_idx, 0] = weighted_dp.values
+            fuel_price_index_change[:, tech_idx, 0] = weighted_dp.values
 
-        ftt_model._mset_fpi = fpi
+        ftt_model._mset_fuel_price_index_change = fuel_price_index_change
     # Carbon price: per-(region, technology) ctax in EUR2015/tCO2.
     # model_class.solve_year() applies the EUR2015→USD2013 conversion using current-year FTT exchange-rate variables.
     c_price_power = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()

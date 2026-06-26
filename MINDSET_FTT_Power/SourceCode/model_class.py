@@ -162,9 +162,9 @@ class ModelRun:
         self._mset_reppx = None
 
         # Fuel price coupling state (MSET-coupled mode only).
-        # _mset_fpi is written by ftt_power.py before each solve_year() call.
+        # _mset_fuel_price_index_change is written by ftt_power.py before each solve_year() call.
         # _fpix_carry accumulates the cumulative price index across years.
-        self._mset_fpi   = None
+        self._mset_fuel_price_index_change = None
         self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI']), 1))
 
     def run(self):
@@ -250,11 +250,11 @@ class ModelRun:
                 variables['BCET'][:, :, c2ti_m['22 Gamma']] = variables['MGAM'][:, :, 0]
 
             # FPIX is cumulative fuel price index; _fpix_carry persists it. None = standalone (no change).
-            fpi = self._mset_fpi if self._mset_fpi is not None else 0.0
-            self._mset_fpi = None   # consume ÔÇö must be re-set each year by ftt_power.py
+            fuel_price_index_change = self._mset_fuel_price_index_change if self._mset_fuel_price_index_change is not None else 0.0
+            self._mset_fuel_price_index_change = None   # consume ÔÇö must be re-set each year by ftt_power.py
             if 'FPIX' in variables:
                 fpix_lag = np.where(self._fpix_carry == 0, 1.0, self._fpix_carry)
-                variables['FPIX'] = fpix_lag * (1.0 + fpi)
+                variables['FPIX'] = fpix_lag * (1.0 + fuel_price_index_change)
                 self._fpix_carry  = variables['FPIX'].copy()
 
             # Call FTT_Standalone
