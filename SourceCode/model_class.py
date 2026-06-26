@@ -347,13 +347,13 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            from SourceCode.ftt_power import solve_year_ftt
+            from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
             self._solve_year_ftt = solve_year_ftt
 
             # Instantiate the run
             self.ftt_model = ftt()
-            
+
             # Call solve_year method for each year while MINDSET is not started
             self.ftt_model.ftt_start = min(self.ftt_model.timeline)
             mindset_start = min(self.years)
@@ -363,6 +363,15 @@ class ModelRun:
             self.ftt_model.ftt_inv_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_technology_investment_converter.csv')
             self.ftt_model.ftt_inv_converter = self.ftt_model.ftt_inv_converter.set_index('PROD_COMM')
             self.ftt_model.investment = dict()
+
+            # Fuel category -> technology indices mapping (static; cached once instead of
+            # rebuilt every solve_year_ftt call).
+            # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
+            _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
+            _t2ti_list = list(self.ftt_model.titles['T2TI'])
+            self.ftt_model.fuel_to_tech_idxs = {}
+            for _, row in _conv_csv.iterrows():
+                self.ftt_model.fuel_to_tech_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
             
             for y, year in enumerate(setup_years):
                 # Solve year
@@ -376,14 +385,7 @@ class ModelRun:
                         self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, 0] = self.ftt_model.variables[var]
 
                 # Assess investment
-                # Reorder MWIY columns to match ftt_inv_converter, then map to MRIO sectors.
-                _mwiy_raw = self.ftt_model.output[self.ftt_model.scenarios]['MWIY'][:, :, 0, y]
-                _mwiy12 = pd.DataFrame(_mwiy_raw, columns=list(self.ftt_model.titles['T2TI'])) \
-                            .reindex(columns=list(self.ftt_model.ftt_inv_converter.columns)).values
-                self.ftt_model.investment[year] = (
-                    np.array(self.ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
-                    _mwiy12[:, np.newaxis, :]
-                ).sum(axis=2)
+                self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
                 # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * 1.33 * 1.17
 

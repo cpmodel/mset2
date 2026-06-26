@@ -12,6 +12,16 @@ from pathlib import Path
 import json
 import pickle
 
+def ftt_investment_by_mrio_sector(ftt_model, y):
+    """Map FTT's MWIY (investment by technology) to MRIO sectors via ftt_inv_converter."""
+    investment_by_tech = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y]
+    investment_by_mrio_sector = (
+        pd.DataFrame(investment_by_tech, columns=list(ftt_model.titles['T2TI']))
+          .reindex(columns=list(ftt_model.ftt_inv_converter.columns)).values
+    )
+    return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
+            investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
+
 def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model, model_start, model_end):
     
     ## FTT: Power
@@ -60,20 +70,15 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
     # model_class.solve_year() applies the EUR2015→USD2013 conversion using current-year FTT exchange-rate variables.
     c_price_power = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()
     reppx_arr = np.zeros((n_reg, n_tech, 1))
-    # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
-    _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
-    _t2ti_list = list(ftt_model.titles['T2TI'])
-    _erti_to_t2ti_idxs = {}
-    for _, row in _conv_csv.iterrows():
-        _erti_to_t2ti_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
+    # Fuel-to-technology index mapping is cached on ftt_model at init (model_class.py); static across years.
     for fuel, sectors in ftt_model.ftt_fuel_converter.groupby('ERTI'):
-        if fuel not in _erti_to_t2ti_idxs:
+        if fuel not in ftt_model.fuel_to_tech_idxs:
             continue
         sec_c_price = c_price_power.loc[c_price_power.TRAD_COMM.isin(sectors.TRAD_COMM)]
         if len(sec_c_price) == 0:
             continue
         avg_by_reg = sec_c_price.groupby('REG_imp')['ctax'].mean()
-        for tech_idx in _erti_to_t2ti_idxs[fuel]:
+        for tech_idx in ftt_model.fuel_to_tech_idxs[fuel]:
             for reg_idx, reg_short in enumerate(_rti_short):
                 if reg_short in avg_by_reg.index:
                     reppx_arr[reg_idx, tech_idx, 0] = avg_by_reg[reg_short]
@@ -129,14 +134,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         # Single write after all sector updates are applied
         self.V.write_var_df('energy_flows', year, _ef.reset_index())
     # Assess investment
-    # Reorder MWIY columns to match ftt_inv_converter, then map to MRIO sectors.
-    _mwiy_raw = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y]
-    _mwiy12 = pd.DataFrame(_mwiy_raw, columns=list(ftt_model.titles['T2TI'])) \
-                .reindex(columns=list(ftt_model.ftt_inv_converter.columns)).values
-    ftt_model.investment[year] = (
-        np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
-        _mwiy12[:, np.newaxis, :]
-    ).sum(axis=2)
+    ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, y)
     # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
     ftt_model.investment[year] = ftt_model.investment[year] * 1.33 * 1.17
 
