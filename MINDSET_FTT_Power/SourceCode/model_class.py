@@ -244,7 +244,7 @@ class ModelRun:
                 n_c2ti = len(self.titles['C2TI'])   # 23 after __init__ extension
                 for d in (variables, time_lags):
                     if d['BCET'].shape[2] < n_c2ti:
-                        ext = np.zeros((*d['BCET'].shape[:2], n_c2ti))
+                        ext = np.ones((*d['BCET'].shape[:2], n_c2ti))
                         ext[:, :, :d['BCET'].shape[2]] = d['BCET']
                         d['BCET'] = ext
                 variables['BCET'][:, :, c2ti_m['22 Gamma']] = variables['MGAM'][:, :, 0]

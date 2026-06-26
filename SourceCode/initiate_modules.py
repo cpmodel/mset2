@@ -671,8 +671,6 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     
     dev_profit_rate_L1[abs(dev_profit_rate_L1)==np.inf] = 0.0
     dev_profit_rate_L1[abs(dev_profit_rate_L1)>10] = 0.0
-    if len(dev_profit_rate_L1[abs(dev_profit_rate_L1)>10]) > 0:
-        print(f"profit rate issues (>10) sectors: {', '.join(map(str, np.where(dyn_qbase < 0)[0]))}")
     v_dev_profit_rate = Price_model.dp_profit_rate(dev_profit_rate_L1)
     dp_dev_profit_rate = Price_model.second_order_dprice(v_dev_profit_rate, year=year)['dp_full']
     

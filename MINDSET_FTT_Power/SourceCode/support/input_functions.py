@@ -62,6 +62,7 @@ def load_data(titles, dimensions, timeline, scenarios, ftt_modules, forstart):
     # Filter dims to variables whose dimensions are all resolvable in titles.
     # VariableListing.csv may contain incomplete-feature variables (e.g. battery_ages,
     # SCA, MAN) that reference dimension keys not yet in classification_titles.csv.
+    known_dims = titles.keys()
     dims = {var: dimensions[var] for var in dimensions
             if all(d in known_dims for d in dimensions[var])}
 

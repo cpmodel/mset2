@@ -52,7 +52,8 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
                                 else 0,
                                 include_groups=False))
             tech_idx = ftt_model.titles['T2TI'].index(tech)
-            fpi[:, tech_idx, 0] = weighted_dp[_rti_short].values
+            weighted_dp = weighted_dp.reindex(_rti_short).fillna(0.0)
+            fpi[:, tech_idx, 0] = weighted_dp.values
 
         ftt_model._mset_fpi = fpi
     # Carbon price: per-(region, technology) ctax in EUR2015/tCO2.
