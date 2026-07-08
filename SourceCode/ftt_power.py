@@ -108,8 +108,12 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         # Read energy_flows once before the loop; all sector updates are applied in-place,
         # then written back once after the loop (avoids N reads+writes for N fuel sectors).
         _ef = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
-        # Loop over supplying sectors
+        _ftt_fuel_growth_by_sector = {}  # TRAD_COMM -> pd.Series(growth_ratio, index=RTI_short)
+        # Loop over supplying sectors (skip TRAD_COMM=93: renewables/nuclear have no
+        # fuel commodity input; including them corrupts the electricity demand fed back to FTT)
         for sector, fuels in ftt_model.ftt_fuel_converter.groupby('TRAD_COMM'):
+            if sector == 93:
+                continue
             # Get indices of corresponding fuels
             fuel_idx = [ftt_model.titles['ERTI'].index(f) for f in fuels.ERTI]
             # Get fuel demand for the given sectors
@@ -120,6 +124,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
                                                 out=np.ones_like(fuel_demand_t),
                                                 where=fuel_demand_t0!=0)
             ftt_energy_dem_growth = pd.Series(ftt_energy_dem_growth, index = ftt_model.titles['RTI_short'])
+            _ftt_fuel_growth_by_sector[sector] = ftt_energy_dem_growth
             # Filter energy data on sector
             power_ener_sec = power_ener_base.loc[power_ener_base.TRAD_COMM == sector].copy()
             power_ener_sec = power_ener_sec.rename(columns = {'fuel_use': 'fuel_use_new_adj'})
@@ -134,6 +139,34 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             _ef.update(power_ener_sec)
         # Single write after all sector updates are applied
         self.V.write_var_df('energy_flows', year, _ef.reset_index())
+        # Propagate FTT fuel-mix signal into new_IO for the power sector (PROD_COMM=93).
+        # new_IO[year] was written by model_class.py (A_iochange × output) before FTT runs.
+        # We overlay FTT's MEPD-based growth ratios on the genuine fuel input rows
+        # (TRAD_COMM=93 is already excluded from _ftt_fuel_growth_by_sector by the continue above).
+        # These updated z_bp / a_bp values become next year's IND_BASE via the
+        # new_IO → IND_BASE roll-forward (initiate_modules.py:50).
+        if _ftt_fuel_growth_by_sector:
+            _new_io = self.V.read_var_df('new_IO', year)
+            _power = _new_io['PROD_COMM'] == 93
+            _pf = _power & _new_io['TRAD_COMM'].isin(_ftt_fuel_growth_by_sector)
+            for _sector, _growth in _ftt_fuel_growth_by_sector.items():
+                _m = _power & (_new_io['TRAD_COMM'] == _sector)
+                if _m.any():
+                    _new_io.loc[_m, 'z_bp'] *= (
+                        _new_io.loc[_m, 'REG_imp'].astype(str).map(_growth).fillna(1.0)
+                    )
+            # Recompute a_bp for the rows we changed, then a_tech for all power rows.
+            _new_io.loc[_pf, 'a_bp'] = np.where(
+                _new_io.loc[_pf, 'output'] != 0,
+                _new_io.loc[_pf, 'z_bp'] / _new_io.loc[_pf, 'output'],
+                0.0
+            )
+            _new_io.loc[_power, 'a_tech'] = (
+                _new_io[_power]
+                .groupby(['REG_imp', 'TRAD_COMM', 'PROD_COMM'])['a_bp']
+                .transform('sum')
+            )
+            self.V.write_var_df('new_IO', year, _new_io)
     # Assess investment
     ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, y)
     # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
