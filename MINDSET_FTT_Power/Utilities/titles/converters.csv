@@ -1,0 +1,13 @@
+T2TI,ERTI
+1 Nuclear,1 Nuclear
+2 Oil,2 Oil
+3 Coal,3 Coal
+4 Coal + CCS,3 Coal
+5 Gas,4 Gas
+6 Gas + CCS,4 Gas
+7 Bioenergy,5 Biomass
+8 Bioenergy + CCS,5 Biomass
+9 Hydro,9 Large Hydro
+10 Solar,12 Solar PV
+11 Wind,10 Onshore
+12 Other Renewable,13 Geothermal

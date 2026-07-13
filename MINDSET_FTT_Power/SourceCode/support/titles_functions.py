@@ -45,34 +45,3 @@ def load_titles():
     titles_dict[''] = ('',)
 
     return titles_dict
-
-
-def load_converters():
-    # Ensure we're using consistent relative paths
-    dir_file = os.path.dirname(os.path.realpath(__file__))
-    dir_root = Path(dir_file).parents[1] 
-   
-    
-    """ Load model converters. """
-
-    # Declare file name
-    conv_file = 'converters.xlsx'
-
-    # Check that classification titles workbook exists
-    conv_path = os.path.join(dir_root, 'Utilities', 'titles', conv_file)
-    if not os.path.isfile(conv_path):
-        print('Converters file not found.')
-
-    conv_dict = pd.read_excel(conv_path, sheet_name = None, index_col = 0)
-    conv_dict.pop("Cover")
-
-    # Override T2TI_ERTI with the numbered-name mapping from ftt_t2ti_erti.csv.
-    # converters.xlsx uses 12 aggregate T2TI names ('Nuclear', 'Oil', ÔÇª) which diverge
-    # from classification_titles.csv's numbered names ('1 Nuclear', '2 Oil', ÔÇª).
-    # ftt_t2ti_erti.csv uses the same numbered T2TI/ERTI names as classification_titles.csv.
-    erti_path = os.path.join(dir_root, 'Utilities', 'ftt_t2ti_erti.csv')
-    if os.path.isfile(erti_path):
-        conv_dict['T2TI_ERTI'] = pd.read_csv(erti_path, index_col='T2TI')
-
-    # Return titles dictionary
-    return conv_dict

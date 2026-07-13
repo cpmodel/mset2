@@ -119,7 +119,6 @@ class ModelRun:
 
         # Load classification titles
         self.titles = titles_f.load_titles()
-        self.conv = titles_f.load_converters()
         self.power_settings = build_power_settings(self.titles, config)
 
         # Load variable dimensions
