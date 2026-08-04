@@ -62,7 +62,7 @@ MJEP,FTT:Power marginal cost of fuels,$2013/MWh,RTI,JTI,,TIME,FTT-P,-,-,2001,-,,
 MJEF,FTT-P Final energy consumption (ktoe),ktoe,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,sum
 MJCO,FTT:Power fuel use that produces emissions incl CCS,ktoe,RTI,JTI,,TIME,FTT-P,-,-,2001,-,,Y,sum
 MGLB,Generation by load band,GWh,RTI,LBTI,,TIME,FTT-P,-,-,2001,-,,Y,sum
-MEWW,FTT-P Cumulative global capacity (GW),GW,,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,no
+MEWW,FTT-P Cumulative global capacity (GW),GW,,T2TI,,TIME,FTT-P,-,2013,2001,-,,Y,no
 MEWT,FTT-P Upfront subsidies (%),%,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,mean
 MEWS,FTT:Power shares of capacity by tech,na,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,mean
 MEWR,FTT-P regulations on capacity,GW,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,mode
