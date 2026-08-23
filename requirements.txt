@@ -1,0 +1,11 @@
+numpy
+pandas==2.2.3
+scipy
+pyarrow
+openpyxl
+dill
+tqdm
+numba
+streamlit
+plotly
+duckdb
