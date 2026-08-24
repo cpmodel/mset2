@@ -9,7 +9,7 @@ ui <- fluidPage(
       uiOutput("colmap_ui"), 
       numericInput("lambda", "PERT shape (lambda)", value = 5, min = 1, step = 1), 
       numericInput("Nsim", "Mixture draws", value = 10000, min = 1000, step = 1000), 
-      uiOutput("question_filter_ui"),  # multi-select 
+      uiOutput("question_filter_ui"),  # one question at a time 
       checkboxInput("show_individual", "Show individual curves in overlays", TRUE), 
       actionButton("run", "Run / Refresh", class = "btn-primary"), 
       tags$hr(), 
@@ -31,8 +31,7 @@ ui <- fluidPage(
         tabPanel("CDF Comparisons", plotOutput("plot_cdf", height = "600px")), 
         tabPanel("Summary Table", div(style = "font-size: 20px;",  
                                       tableOutput("summary_table")), 
-                 helpText("Summaries are for the equal-weight mixture of participant PERT 
-distributions (hard bounds with mode at BGP).")) 
+                 helpText("Row 1 is the moment-matched Beta. Row 2 is the equal-weight mixture of participant PERT distributions (hard bounds with mode at BGP). Mixture_5th / Mixture_95th are the 5th and 95th percentiles of that row's distribution.")) 
       ) 
     ) 
   ) 

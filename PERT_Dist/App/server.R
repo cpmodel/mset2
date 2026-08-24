@@ -31,18 +31,23 @@ server <- function(input, output, session) {
       selectInput("col_bgp", "Best guess (BGP)", choices = cols, 
                   selected = grep("Best|BGP", cols, ignore.case = TRUE, value = TRUE)[1]), 
       selectInput("col_hpp", "Highest plausible (HPP)", choices = cols, 
-                  selected = grep("Highest|HPP", cols, ignore.case = TRUE, value = TRUE)[1]) 
-       
+                  selected = grep("Highest|HPP", cols, ignore.case = TRUE, value = TRUE)[1]),
+      selectInput("col_note", "Blank/exclusion label",
+                  choices = c("<none>", cols),
+                  selected = {
+                    hit <- grep("No_value|note|reason|label", cols, ignore.case = TRUE, value = TRUE)[1]
+                    if (length(hit) && !is.na(hit)) hit else "<none>"
+                  })
     ) 
   }) 
    
-  # Multi-question filter UI (select many or "All") 
   output$question_filter_ui <- renderUI({ 
     req(raw_df(), input$col_question) 
     if (identical(input$col_question, "<none>")) return(NULL) 
-    qs <- sort(unique(raw_df()[[input$col_question]])) 
-    selectInput("question_multi", "Questions to display", 
-                choices = c("All", qs), selected = "All", multiple = TRUE) 
+    qs <- sort(unique(as.character(raw_df()[[input$col_question]]))) 
+    qs <- qs[!is.na(qs) & nzchar(qs)] 
+    selectInput("question_sel", "Question to display", 
+                choices = qs, selected = qs[1], multiple = FALSE) 
   }) 
    
   # Run/Refresh 
@@ -57,19 +62,25 @@ server <- function(input, output, session) {
     } 
     q_col <- if (has_q) input$col_question else "__Question__" 
      
-    # If one or more questions chosen (not "All"), filter to those
-     if (has_q && !is.null(input$question_multi)) { 
-      sel <- setdiff(input$question_multi, "All") 
-      if (length(sel) > 0) { 
-        df <- df %>% filter(.data[[q_col]] %in% sel) 
-      } 
-    } 
+    req(input$question_sel) 
+    df <- df %>% filter(as.character(.data[[q_col]]) == as.character(input$question_sel)) 
      
-    qs <- unique(df[[q_col]]) 
+    n_ok <- sum(is_valid_triple( 
+      suppressWarnings(as.numeric(df[[input$col_lpp]])), 
+      suppressWarnings(as.numeric(df[[input$col_bgp]])), 
+      suppressWarnings(as.numeric(df[[input$col_hpp]])) 
+    )) 
+    validate(need( 
+      n_ok > 0, 
+      "No valid L/M/U triples for this question. Expert Scores still shows blank-row labels." 
+    )) 
      
-    # Summarize per selected questions (random seed each run) 
+    qs <- unique(as.character(df[[q_col]])) 
+    validate(need(length(qs) > 0, "No rows for the selected question.")) 
+     
     res_list <- lapply(qs, function(q) { 
-      df_q <- df %>% filter(.data[[q_col]] == q) 
+      df_q <- df %>% filter(as.character(.data[[q_col]]) == as.character(q)) 
+      cfg <- resolve_question_config(q, hpp = suppressWarnings(as.numeric(df_q[[input$col_hpp]]))) 
       summarize_question_pert( 
         df_q, 
         id_col  = input$col_id, 
@@ -78,7 +89,9 @@ server <- function(input, output, session) {
         hpp_col = input$col_hpp, 
         lambda  = input$lambda, 
         Nsim    = input$Nsim, 
-        seed    = NULL,                # random seed inside 
+        xmin    = cfg$xmin, 
+        xmax    = cfg$xmax, 
+        seed    = NULL, 
         question_label = as.character(q) 
       ) 
     }) 
@@ -99,6 +112,7 @@ server <- function(input, output, session) {
       tibble(Question = nm, samples = res_list[[nm]]$samples) 
     })) 
      
+    cfg <- resolve_question_config(qs[1], hpp = suppressWarnings(as.numeric(df[[input$col_hpp]]))) 
     list( 
       summaries     = summary_all, 
       dens_mix_all  = dens_mix_all, 
@@ -108,7 +122,8 @@ server <- function(input, output, session) {
       cdf_emp_all   = cdf_emp_all, 
       cdf_beta_all  = cdf_beta_all, 
       cdf_ind_all   = cdf_ind_all, 
-      samples_all   = samples_all 
+      samples_all   = samples_all, 
+      cfg           = cfg 
     ) 
   }, ignoreInit = TRUE) 
    
@@ -116,44 +131,21 @@ server <- function(input, output, session) {
   output$download_participants_png <- downloadHandler( 
     filename = function() paste0("participants_raw_", Sys.Date(), ".png"), 
     content = function(file) { 
-      req(results()) 
-      df0 <- raw_df() 
-      req(input$col_id, input$col_lpp, input$col_bgp, input$col_hpp) 
-      has_q <- !identical(input$col_question, "<none>") 
-      if (!has_q) { 
-        q_col <- "__Question__" 
-        df0 <- df0 %>% mutate(`__Question__` = "Q1") 
-      } else { 
-        q_col <- input$col_question 
-      } 
-      if (has_q && !is.null(input$question_multi)) { 
-        sel <- setdiff(input$question_multi, "All") 
-        if (length(sel) > 0) { 
-          df0 <- df0 %>% filter(.data[[q_col]] %in% sel) 
-        } 
-      } 
-       
-      dfp <- df0 %>% 
-        transmute( 
-          Question             = .data[[q_col]], 
-          Participant          = as.character(.data[[input$col_id]]), 
-          Lowest_Plausible_Pr  = suppressWarnings(as.numeric(.data[[input$col_lpp]])), 
-          Best_Guess_Pr        = suppressWarnings(as.numeric(.data[[input$col_bgp]])), 
-          Highest_Plausible_Pr = suppressWarnings(as.numeric(.data[[input$col_hpp]])) 
-        ) 
-       
-      facet_cols <- if (!is.null(input$facet_cols)) input$facet_cols else 4 
-       
-      g <- ggplot() + 
-        coord_flip()+ 
-        geom_linerange(data = dfp, aes(x = Participant, ymin = Lowest_Plausible_Pr,  
-                                       ymax = Highest_Plausible_Pr), lwd = 0.5) + 
-        geom_point(data = dfp, aes(x = Participant, y = Best_Guess_Pr), size = 1) + 
-        labs(x = "Participant", y = "Probability") + ylim(0,1) + 
-        facet_wrap(~Question, ncol = facet_cols, scales = "fixed") + theme_export + 
-        theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) 
-       
-      ggsave(file, g, width = 8, height = 4, dpi = 1200, units='in', limitsize = FALSE) 
+      req(raw_df(), input$col_id, input$col_lpp, input$col_bgp, input$col_hpp, input$question_sel) 
+      g <- build_individuals_plot( 
+        df_raw = raw_df(), 
+        id_col = input$col_id, 
+        lpp_col = input$col_lpp, 
+        bgp_col = input$col_bgp, 
+        hpp_col = input$col_hpp, 
+        question_col = input$col_question, 
+        note_col = input$col_note, 
+        selected_questions = input$question_sel, 
+        use_export_theme = TRUE, 
+        theme_export = if (exists("theme_export")) theme_export else NULL, 
+        facet_cols = 1 
+      ) 
+      ggsave(file, g, width = 8, height = 6, dpi = 1200, units='in', limitsize = FALSE) 
     } 
   ) 
    
@@ -218,9 +210,10 @@ server <- function(input, output, session) {
         bgp_col           = input$col_bgp, 
         hpp_col           = input$col_hpp, 
         question_col      = input$col_question, 
-        selected_questions= input$question_multi, 
-        facet_cols        = facet_cols, 
-        use_export_theme  = TRUE,           # set FALSE to use app theme 
+        note_col          = input$col_note, 
+        selected_questions= input$question_sel, 
+        facet_cols        = 1, 
+        use_export_theme  = TRUE, 
         theme_export      = if (exists("theme_export")) theme_export else NULL 
       ) 
        
@@ -249,7 +242,7 @@ server <- function(input, output, session) {
   ) 
    
   output$plot_participants <- renderPlot({ 
-    req(results()) 
+    req(input$run, raw_df(), input$col_id, input$col_lpp, input$col_bgp, input$col_hpp) 
      
     build_individuals_plot( 
       df_raw = raw_df(), 
@@ -258,8 +251,9 @@ server <- function(input, output, session) {
       bgp_col = input$col_bgp, 
       hpp_col = input$col_hpp, 
       question_col = input$col_question, 
-      selected_questions = input$question_multi, 
-      facet_cols = NULL   
+      note_col = input$col_note, 
+      selected_questions = input$question_sel, 
+      facet_cols = 1 
     ) 
   }) 
    
@@ -308,5 +302,5 @@ readr::write_csv(results()$summaries, file)
 } 
 ) 
 } 
-# Run app 
-shinyApp(ui, server) 
+# shinyApp(ui, server) is called from app.R only (appendix listed it here too;
+# sourcing both files would try to bind the HTTP port twice).

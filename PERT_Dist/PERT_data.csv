@@ -1,0 +1,29 @@
+Question,Participant,Lowest_Plausible_Pr,Best_Guess_Pr,Highest_Plausible_Pr,No_value_label
+2a,A,0.225,0.4,0.65,
+2a,B,0.01,0.03,0.1,
+2a,C,0.03,0.4,1,
+2a,D,0.03,0.1,0.4,
+2a,E,0.1,0.4,1,
+2a,F,0.03,0.225,0.4,
+2a,G,0.03,0.1,0.4,
+2a,H,,,,Error in triples
+2a,I,,,,Prefer not to quantify
+2a,J,,,,Error in triples
+2a,K,0,0,0.03,
+2a,L,,,,Error in triples
+2a,M,0.03,0.1,0.225,
+2a,N,0,0.03,0.05,
+1a,A,37,75,200,
+1a,B,5,75,200,
+1a,C,5,57,125,
+1a,D,0,18,37,
+1a,E,150,200,375,
+1a,F,,,,Prefer not to quantify
+1a,G,18,75,375,
+1a,H,5,125,500,
+1a,I,125,200,500,
+1a,J,,,,Error in triples
+1a,K,5,80,375,
+1a,L,,,,Error in triples
+1a,M,,,,Prefer not to quantify
+1a,N,150,200,375,
