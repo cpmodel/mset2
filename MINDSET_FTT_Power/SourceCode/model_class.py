@@ -13,16 +13,14 @@ ModelRun class: main class for operation of model.
 
 # Standard library imports
 import configparser
-import copy
+from pathlib import Path
 
 # Third party imports
 import numpy as np
 from tqdm import tqdm
 
-# Local library imports
-# Separate FTT modules
-import MINDSET_FTT_Power.SourceCode.Power.ftt_p_main as ftt_p
-
+from ftt_source.paths import set_paths
+from ftt_source.Power.ftt_p_main import solve as ftt_p_solve, build_power_settings
 
 # Support modules
 import MINDSET_FTT_Power.SourceCode.support.input_functions as in_f
@@ -94,8 +92,10 @@ class ModelRun:
         """ Instantiate model run object """
 
         # Attributes given in settings.ini file
+        _mindset_root = Path(__file__).parents[1]
+        _settings_ini = str(_mindset_root / 'settings.ini')
         config = configparser.ConfigParser()
-        config.read('MINDSET_FTT_Power/settings.ini')
+        config.read(_settings_ini)
         self.name = config.get('settings', 'name')
         self.model_start = int(config.get('settings', 'model_start'))
         self.model_end = int(config.get('settings', 'model_end'))
@@ -107,20 +107,45 @@ class ModelRun:
         self.ftt_modules = config.get('settings', 'enable_modules')
         self.scenarios = config.get('settings', 'scenarios')
 
+        # Point FTT_Standalone at MINDSET's Utilities and settings (once at startup)
+        set_paths(utilities_path=str(_mindset_root / 'Utilities'))
+        self.ftt_settings_path = _settings_ini
+        self.carbon_price_conv_factor = float(
+            config.get('settings', 'carbon_price_conv_factor', fallback='1.3281'))
+        # Read exchange-rate variable names from settings (must match ftt_p_main.py)
+        _ex_base_year = int(config.get('settings', 'ex_base_year', fallback='2018'))
+        self._prsc_ex_var = f"PRSC{str(_ex_base_year)[2:]}"   # e.g. "PRSC18"
+        self._ex_var      = f"EX{str(_ex_base_year)[2:]}"     # e.g. "EX18"
+
         # Load classification titles
         self.titles = titles_f.load_titles()
-        self.conv = titles_f.load_converters()
+        self.power_settings = build_power_settings(self.titles, config)
 
         # Load variable dimensions
         self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims()
-        
-        # # Set up csv files if they do not exist yet
-        # initialise_csv_files(self.ftt_modules, self.scenarios)
-        
-        # Retrieve inputs
+
+        # Retrieve inputs ÔÇö C2TI size must match the CSV files at this point
         self.input = in_f.load_data(self.titles, self.dims, self.timeline,
                                     self.scenarios, self.ftt_modules,
                                     self.forstart)
+
+        # After loading, extend BCET and C2TI so FTT_Standalone's ftt_p_lcoe can find
+        # '22 Gamma' (index 21) and '23 Value factor' (index 22) by name.
+        # The CSV data ends at '21 Gamma ($/MWh)' (index 20); we copy it to column 21
+        # and default Value factor to 1.0 for all technologies.
+        c2ti_list = list(self.titles['C2TI'])
+        gamma_col = c2ti_list.index('21 Gamma ($/MWh)')  # index 20
+        new_entries = [e for e in ('22 Gamma', '23 Value factor') if e not in c2ti_list]
+        if new_entries:
+            n_extra = len(new_entries)
+            for scen in self.input:
+                bcet = self.input[scen]['BCET']          # (RTI, T2TI, C2TI, 1)
+                extra = np.ones((bcet.shape[0], bcet.shape[1], n_extra, bcet.shape[3]))
+                extra[:, :, 0, :] = bcet[:, :, gamma_col, :]   # '22 Gamma' = copy of col 21
+                # '23 Value factor' stays 1.0
+                self.input[scen]['BCET'] = np.concatenate([bcet, extra], axis=2)
+            c2ti_list.extend(new_entries)
+            self.titles['C2TI'] = tuple(c2ti_list)
 
 
         # Initialize remaining attributes
@@ -129,6 +154,17 @@ class ModelRun:
         # Define output container
         self.output = {scen: {var: np.full_like(self.input[scen][var], 0) \
                               for var in self.input[scen]} for scen in self.input}
+
+        # Carbon price coupling state (MSET-coupled mode only).
+        # Written by ftt_power.py before each solve_year(); consumed in solve_year().
+        # Shape (n_reg, n_tech, 1) ÔÇö one ctax per (region, technology) in EUR2015/tCO2.
+        self._mset_reppx = None
+
+        # Fuel price coupling state (MSET-coupled mode only).
+        # _mset_fuel_price_index_change is written by ftt_power.py before each solve_year() call.
+        # _fpix_carry accumulates the cumulative price index across years.
+        self._mset_fuel_price_index_change = None
+        self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI']), 1))
 
     def run(self):
         """ Solve model run and save results """
@@ -180,29 +216,55 @@ class ModelRun:
 
         # Run update
         variables, time_lags = self.update(year, y, scenario)
-        iter_lags = copy.deepcopy(time_lags)
 
         # Define whole period
         tl = self.timeline
 
         # define modules list in for possible setting.ini selection
         modules_list = ["FTT-P"]
-        # Iteration loop here
-        for itereration in range(max_iter):
 
-            if "FTT-P" in self.ftt_modules:
-                variables = ftt_p.solve(variables, time_lags, iter_lags,
-                                        self.titles, self.conv, self.histend, tl[y],
-                                        self.domain)
+        if "FTT-P" in self.ftt_modules:
 
-            if not any(True for x in modules_list if x in self.ftt_modules):
-                print("Incorrect selection of modules. Check settings.ini")
+            # Convert MINDSET ctax (EUR2015/tCO2) to CO2taxP (USD2013/tCO2).
+            # Use time_lags for exchange-rate snapshots: variables has them as zero (no CSV in coupled Inputs).
+            if self._mset_reppx is not None:
+                _prsc18 = time_lags.get(self._prsc_ex_var)
+                _ex18   = time_lags.get(self._ex_var)
+                if _prsc18 is not None and _ex18 is not None:
+                    denom = (variables['PRSCX'] * _ex18
+                             / np.maximum(_prsc18 * variables['EXX'], 1e-10))
+                    variables['CO2taxP'] = (self._mset_reppx * self.carbon_price_conv_factor
+                                            / np.where(denom != 0, denom, 1.0))
+                self._mset_reppx = None   # consume ÔÇö must be re-set each year by ftt_power.py
 
-            # Third, solve energy supply
-            # Overwrite iter_lags to be used in the next iteration round
-            iter_lags = copy.deepcopy(variables)
-#        # Print any diagnstics
-#
+            # Overwrite BCET's '22 Gamma' column with MGAM before calling FTT_Standalone.
+            if 'MGAM' in variables:
+                c2ti_m = {cat: idx for idx, cat in enumerate(self.titles['C2TI'])}
+                n_c2ti = len(self.titles['C2TI'])   # 23 after __init__ extension
+                for d in (variables, time_lags):
+                    if d['BCET'].shape[2] < n_c2ti:
+                        ext = np.ones((*d['BCET'].shape[:2], n_c2ti))
+                        ext[:, :, :d['BCET'].shape[2]] = d['BCET']
+                        d['BCET'] = ext
+                variables['BCET'][:, :, c2ti_m['22 Gamma']] = variables['MGAM'][:, :, 0]
+
+            # FPIX is cumulative fuel price index; _fpix_carry persists it. None = standalone (no change).
+            fuel_price_index_change = self._mset_fuel_price_index_change if self._mset_fuel_price_index_change is not None else 0.0
+            self._mset_fuel_price_index_change = None   # consume ÔÇö must be re-set each year by ftt_power.py
+            if 'FPIX' in variables:
+                fpix_lag = np.where(self._fpix_carry == 0, 1.0, self._fpix_carry)
+                variables['FPIX'] = fpix_lag * (1.0 + fuel_price_index_change)
+                self._fpix_carry  = variables['FPIX'].copy()
+
+            # Call FTT_Standalone
+            variables = ftt_p_solve(
+                variables, time_lags, self.titles, self.histend,
+                tl[y], self.domain, self.power_settings
+            )
+
+        if not any(True for x in modules_list if x in self.ftt_modules):
+            print("Incorrect selection of modules. Check settings.ini")
+
         return variables, time_lags
 
     def update(self, year, y, scenario):

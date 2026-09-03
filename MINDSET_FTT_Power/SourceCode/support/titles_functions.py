@@ -15,65 +15,33 @@ import os
 
 
 # Third party imports
-from openpyxl import load_workbook
 from pathlib import Path
 import pandas as pd
 
 def load_titles():
-    # Ensure we're using consistent relative paths
     dir_file = os.path.dirname(os.path.realpath(__file__))
-    dir_root = Path(dir_file).parents[1] 
-   
-    
-    """ Load model classifications and titles. """
+    dir_root = Path(dir_file).parents[1]
 
-    # Declare file name
-    titles_file = 'classification_titles.xlsx'
+    titles_path = dir_root / 'Utilities' / 'titles' / 'classification_titles.csv'
+    if not titles_path.is_file():
+        raise FileNotFoundError(f"Classification titles file not found at: {titles_path}")
 
-    # Check that classification titles workbook exists
-    titles_path = os.path.join(dir_root, 'Utilities', 'titles', titles_file)
-    if not os.path.isfile(titles_path):
-        print('Classification titles file not found.')
+    df = pd.read_csv(titles_path, header=None, keep_default_na=False, dtype=str)
 
-    titles_wb = load_workbook(titles_path)
-    sheet_names = titles_wb.sheetnames
-    sheet_names.remove('Cover')
-
-    # Iterate through worksheets and add to titles dictionary
     titles_dict = {}
-    for sheet in sheet_names:
-        active = titles_wb[sheet]
-        for column_values in active.iter_cols(min_row=1, values_only=True):
-            # Assigning the full names (e.g. "1 Petrol Econ")
-            if column_values[0] == 'Full name':  # First row
-                titles_dict[f'{sheet}'] = column_values[1:]
-            # Assigning the short names (e.g. "1")
-            if column_values[0] == 'Short name': # First row
-                titles_dict[f'{sheet}_short'] = column_values[1:]
+    for _, row in df.iterrows():
+        classification = row[0]
+        name_type = row[4]
+        values = [v for v in row.iloc[5:] if v != '' and pd.notna(v)]
+        cleaned = [int(v) if v.isdigit() else v for v in values]
+        if name_type == 'Full name':
+            titles_dict[classification] = tuple(cleaned)
+        elif name_type == 'Short name':
+            titles_dict[f"{classification}_short"] = tuple(cleaned)
 
-    # Return titles dictionary
+    # '' (empty string) is used as a placeholder 4th dimension in VariableListing.csv for
+    # scalar/unused dims (e.g. BCET has Dim4='').  input_functions.py checks
+    # `all(d in known_dims for d in dims[var])` so '' must be a key in titles.
+    titles_dict[''] = ('',)
+
     return titles_dict
-
-
-def load_converters():
-    # Ensure we're using consistent relative paths
-    dir_file = os.path.dirname(os.path.realpath(__file__))
-    dir_root = Path(dir_file).parents[1] 
-   
-    
-    """ Load model converters. """
-
-    # Declare file name
-    conv_file = 'converters.xlsx'
-
-    # Check that classification titles workbook exists
-    conv_path = os.path.join(dir_root, 'Utilities', 'titles', conv_file)
-    if not os.path.isfile(conv_path):
-        print('Converters file not found.')
-
-    conv_dict = pd.read_excel(conv_path, sheet_name = None, index_col = 0)
-    conv_dict.pop("Cover")
-
-
-    # Return titles dictionary
-    return conv_dict

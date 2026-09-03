@@ -81,13 +81,11 @@ from SourceCode.GDP import GDP
 from SourceCode.results import results
 from SourceCode.variables import variables_table
 from SourceCode.normal_output import normal_output_mod
-from SourceCode.ftt_power import solve_year_ftt
 from SourceCode.cost_curves import cost_curves
 from SourceCode.utils import temporary_storage
 from SourceCode.utils import logging
 from SourceCode.utils import MRIO_df_to_vec, MRIO_vec_to_df, MRIO_mat_to_df
 from SourceCode.initiate_modules import initiate_modules
-from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
 
 import warnings
 
@@ -349,10 +347,13 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            
+            from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector
+            from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
+            self._solve_year_ftt = solve_year_ftt
+
             # Instantiate the run
             self.ftt_model = ftt()
-            
+
             # Call solve_year method for each year while MINDSET is not started
             self.ftt_model.ftt_start = min(self.ftt_model.timeline)
             mindset_start = min(self.years)
@@ -362,27 +363,33 @@ class ModelRun:
             self.ftt_model.ftt_inv_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_technology_investment_converter.csv')
             self.ftt_model.ftt_inv_converter = self.ftt_model.ftt_inv_converter.set_index('PROD_COMM')
             self.ftt_model.investment = dict()
+
+            # Fuel category -> technology indices mapping (static; cached once instead of
+            # rebuilt every solve_year_ftt call).
+            # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
+            _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
+            _t2ti_list = list(self.ftt_model.titles['T2TI'])
+            self.ftt_model.fuel_to_tech_idxs = {}
+            for _, row in _conv_csv.iterrows():
+                self.ftt_model.fuel_to_tech_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
             
             for y, year in enumerate(setup_years):
                 # Solve year
                 self.ftt_model.variables, self.ftt_model.lags = self.ftt_model.solve_year(year, y, self.ftt_model.scenarios)
-                
+
                 # Populate output container
                 for var in self.ftt_model.variables:
                     if 'TIME' in self.ftt_model.dims[var]:
                         self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, y] = self.ftt_model.variables[var]
                     else:
                         self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, 0] = self.ftt_model.variables[var]
-                    
+
                 # Assess investment
-                # Calculate changes in investment
-                self.ftt_model.investment[year] = (np.array(self.ftt_model.ftt_inv_converter[list(self.ftt_model.titles['T2TI'])])[np.newaxis, :, :] * 
-                              self.ftt_model.output[self.ftt_model.scenarios]['MWIY'][:, :, 0, y][:, np.newaxis, :]).sum(axis = 2)
+                self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
                 # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * 1.33 * 1.17
 
-        
-        
+
         #%%
         
         #region 2_Solving_the_model [rgba(52,152,219,0.10)]
@@ -425,7 +432,7 @@ class ModelRun:
             'dq_exog_gov_prev': np.zeros((len(self.EXOG_VARS.R)*len(self.EXOG_VARS.P))),
             'dq_supply_constraint_no_empl': np.zeros((len(self.EXOG_VARS.R)*len(self.EXOG_VARS.P))),
             'fuel_price': pd.DataFrame(),
-            'cbam_incidence': {}
+            'cbam_incidence': {},
         }
         
         self.DYNAMIC['PROJECTION_OUTPUT'] = self.EXOG_VARS.PROJECTION_OUTPUT
@@ -1064,13 +1071,9 @@ class ModelRun:
     
         if self.ftt_run:
             ## FTT: Power
-            ftt_model, DYNAMIC = solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
-                                                          ener_base, IO_model, self.model_start, self.model_end)
+            ftt_model, DYNAMIC = self._solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
+                                                               ener_base, IO_model, self.model_start, self.model_end)
                 
-        # for i in range(len(ftt_model.titles['RTI'])):
-        #     print(ftt_model.titles['RTI'][i])
-        #     pd.DataFrame(ftt_model.output['S0']['MEWG'][i, :, 0, :], index = ftt_model.titles['T2TI'], columns = range(2010, 2051)).T.plot()
-    
         ## EMISSIONS
     
         Energy_emissions = ener_balance(EXOG_VARS, Scenario, self.refining_sectors)
