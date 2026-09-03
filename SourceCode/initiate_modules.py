@@ -1250,9 +1250,6 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
             cost_curves_impact_old = cost_curves_impact[['REG_imp','PROD_COMM','input_cost_change']].copy()
             cost_curves_impact_old = cost_curves_impact_old.rename(columns={'input_cost_change':'input_cost_change_old'})
 
-        if iter_run > 1:
-            dempl_labour_supply_constraint = np.zeros_like(dempl_total)
-
         # ? calculate new emission cost based on new trade and new output
         Energy_emissions.update_ind_base(A_trade, self.V.read_var("output", year-1) + self.V.read_var("dq_total", year))
         tax_incidence = Energy_emissions.calculate_tax_incidence()
