@@ -8,7 +8,9 @@ For enquiries, contact: [bm638@exeter.ac.uk](mailto:bm638@exeter.ac.uk)
 
 ## Overview
 
-The repository is a fork of the main **mset2** (MINDSET) codebase, extended with additional materials for this dissertation. Alongside the core model, it includes a graphic user interface, expert-elicitation tools, and supporting analysis.
+This repository is a working copy of the **mset2** (MINDSET) modelling codebase, forked from the upstream main branch and extended with materials developed for this dissertation. In addition to the core model and a graphic user interface, it includes tools and anonymised outputs related to an expert elicitation exercise.
+
+For licensing and redistribution reasons, restricted model databases and large simulation result files are **not** included. Readers who wish to reproduce model runs will need to obtain the underlying data sources separately (see the READMEs under `Data/`) and run the model locally.
 
 ---
 
@@ -16,53 +18,59 @@ The repository is a fork of the main **mset2** (MINDSET) codebase, extended with
 
 The core modelling code is forked from the `mset2` main branch.
 
-| Addition | Description |
-|----------|-------------|
-| Graphic user interface | Based on a live pull request by Cormac Lynch (`GUI/`, launched with `run_frontend.py`) |
-| Scenario files | Policy and scenario assumptions live in `Data/MSET_data/Scenarios/` |
+| Component | Location / notes |
+|-----------|------------------|
+| Graphic user interface | Based on a live pull request by Cormac Lynch (`GUI/`; launch with `run_frontend.py`) |
+| Scenario assumption files | `Data/MSET_data/Scenarios/` (CVF and G77+C variants, plus the empty baseline scenario) |
+| Model configuration | Root-level `.ini` files (for example `s_CVF_upper.ini`, `s_base.ini`) |
 
-For general model setup and command-line runs, see the project `README.md` and `CLAUDE.md`.
+Within `Data/MSET_data/`, only the scenario workbooks are redistributed here. Other parameter and input files used in a full local installation are omitted. Folders such as `Data/GLORIA_db/` and `Data/Energy_db/` retain their upstream documentation but do not contain redistributable databases (see those folders’ README files for access and licensing information).
+
+Bulk model outputs under `Results/` are likewise not included in this repository.
+
+For general model setup and command-line use, see the project `README.md` and `CLAUDE.md`.
 
 ---
 
 ## PERT distribution Shiny app (`PERT_dist/`)
 
-This folder contains the Shiny application code from Lamothe (2026).
+This folder contains the Shiny application published as Appendix 1 of Lamothe (2026), with local adaptations for this project.
 
 | Path | Contents |
 |------|----------|
-| `App/`, `Data/`, `Functions/` | R code and supporting data for the Shiny application |
-| `q1a_results/`, `q2a_results/` | Application results |
-| `PERT_data.csv` | Expert elicitation data |
-| `README.md` | How to run the app, and notes on changes from the original (prepared with support from Cursor AI) |
+| `App/`, `Data/`, `Functions/` | R code for the Shiny application |
+| `q1a_results/`, `q2a_results/` | Saved plots and summary tables from the app |
+| `PERT_data.csv` | Anonymised expert elicitation responses (participants coded as letters; no personal identifiers) |
+| `README.md` | How to run the app, and a record of changes from the published appendix (prepared with support from Cursor AI) |
 
 ---
 
 ## Qualtrics survey scripts (`Elicitation_Javascript_code/`)
 
-JavaScript used in the Qualtrics expert-elicitation survey.
+Custom JavaScript used in the Qualtrics expert-elicitation survey.
 
 | Path | Contents |
 |------|----------|
-| `Qualtrics-JavaScript-reference.md` | Question-by-question summary of the scripts entered manually into Qualtrics. The scripts and this reference were produced with a Cursor AI agent. |
+| `Qualtrics-JavaScript-reference.md` | Question-by-question summary of the scripts entered manually into Qualtrics. The scripts and this reference were produced with assistance from a Cursor AI agent. |
+
+Raw Qualtrics response exports are not included in this repository.
 
 ---
 
-## Supporting analysis (`Supporting/`)
-
-Additional analysis and outputs used in the dissertation.
+## Supporting materials (`Supporting/`)
 
 | File | Contents |
 |------|----------|
-| `Quantitative_analysis.xlsx` | Expert elicitation downloads, data cleaning, and interim PERT results, plus scenario-sheet templates with linked supporting calculations |
-| `MSET_results.xlsx` | Tables and graphs exported from the MINDSET graphic user interface |
+| `MSET_results.xlsx` | Selected tables and figures exported from the MINDSET graphic user interface for use in the dissertation |
+
+Interim quantitative workbooks used during analysis (including raw survey downloads) are not redistributed here.
 
 ---
 
 ## Attribution and tools
 
-- MINDSET / mset2 core model: upstream project authors  
-- GUI: Cormac Lynch (pull request)  
-- PERT Shiny application: Lamothe (2026), with local adaptations documented in `PERT_dist/README.md`  
-- Qualtrics JavaScript and reference notes: developed with Cursor AI assistance  
-- PERT app documentation: prepared with support from Cursor AI  
+- MINDSET / mset2 core model: upstream project authors (MIT Licence; see `LICENSE`)
+- GUI: Cormac Lynch (pull request)
+- PERT Shiny application: Lamothe (2026), Open Government Licence – Canada; local adaptations documented in `PERT_dist/README.md`
+- Qualtrics JavaScript and reference notes: developed with Cursor AI assistance
+- PERT app documentation: prepared with support from Cursor AI
