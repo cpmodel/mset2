@@ -166,6 +166,11 @@ class ModelRun:
         self._mset_fuel_price_index_change = None
         self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI']), 1))
 
+        # FTT->MSET IO/employment coupling state, written by ftt_power.py, consumed
+        # by initiate_modules.py the following year.
+        self._mset_pending_fuel_io_impact = None
+        self._mset_pending_employment_impact = None
+
     def run(self):
         """ Solve model run and save results """
 
