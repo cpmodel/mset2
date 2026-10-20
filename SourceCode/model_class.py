@@ -227,6 +227,15 @@ class ModelRun:
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = istruefalse(config.get('settings', 'CALIBRATING'))
         self.ftt_run = istruefalse(config.get('settings', 'ftt_run'))
+        # FTT->MSET IO channel: 'tech_matrix' (default; CEFIO matrix, every commodity touched,
+        # plus employment coupling) or 'mepd' (fuel commodities only). Both keys are optional.
+        self.ftt_power_io_mode = config.get('settings', 'ftt_power_io_mode', fallback='tech_matrix')
+        if self.ftt_power_io_mode not in ('mepd', 'tech_matrix'):
+            raise ValueError(
+                f"ftt_power_io_mode must be 'mepd' or 'tech_matrix', got {self.ftt_power_io_mode!r}")
+        # tech_matrix only: exclude TRAD_COMM=93 to avoid a self-referential feedback loop.
+        self.ftt_tech_matrix_exclude_own_sector = istruefalse(
+            config.get('settings', 'ftt_tech_matrix_exclude_own_sector', fallback='True'))
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
@@ -372,7 +381,26 @@ class ModelRun:
             self.ftt_model.fuel_to_tech_idxs = {}
             for _, row in _conv_csv.iterrows():
                 self.ftt_model.fuel_to_tech_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
-            
+
+            self.ftt_model.ftt_power_io_mode = self.ftt_power_io_mode
+            self.ftt_model.ftt_tech_matrix_exclude_own_sector = self.ftt_tech_matrix_exclude_own_sector
+            self.ftt_model.ftt_employment_coupling = self.ftt_power_io_mode == 'tech_matrix'
+            if self.ftt_power_io_mode == 'tech_matrix':
+                # Reindex defensively -- columns/index use titles['T2TI'] labels but order isn't guaranteed.
+                _a_elec = pd.read_csv(
+                    'Data/MSET_data/Energy_IO/A_elec_MSET_FTT_12.csv', index_col=0
+                )
+                assert set(_a_elec.columns) == set(_t2ti_list),                     "Energy_IO A_elec technologies do not match FTT's T2TI titles"
+                self.ftt_model.ftt_cefio_a_elec = _a_elec.reindex(columns=_t2ti_list).fillna(0.0)
+
+                _l_elec = pd.read_csv(
+                    'Data/MSET_data/Energy_IO/L_elec_MSET_FTT_12.csv', index_col=0
+                )
+                assert set(_t2ti_list) <= set(_l_elec.index),                     "Energy_IO L_elec lacks technologies of FTT's T2TI titles"
+                self.ftt_model.ftt_labour_intensity = (
+                    _l_elec.reindex(_t2ti_list)['labour_intensity'].fillna(0.0)
+                )
+
             for y, year in enumerate(setup_years):
                 # Solve year
                 self.ftt_model.variables, self.ftt_model.lags = self.ftt_model.solve_year(year, y, self.ftt_model.scenarios)
