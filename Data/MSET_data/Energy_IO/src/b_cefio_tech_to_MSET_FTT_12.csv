@@ -1,0 +1,18 @@
+CEFIO_S_code,CEFIO_technology,MSET_FTT_12_tech
+S100,Coal Power (<100MW),3 Coal
+S101,Coal Power (100-200MW),3 Coal
+S102,Coal Power (200-300MW),3 Coal
+S103,Coal Power (300-600MW),3 Coal
+S104,Coal Power (600-1000MW),3 Coal
+S105,Coal Power (>=1000MW),3 Coal
+S105,Coal Power (>=1000MW),4 Coal + CCS
+S106,Other Thermal Power n.e.c.,2 Oil
+S106,Other Thermal Power n.e.c.,5 Gas
+S106,Other Thermal Power n.e.c.,6 Gas + CCS
+S107,Hydropower,9 Hydro
+S108,Nuclear Power,1 Nuclear
+S109,Wind Power,11 Wind
+S110,Solar Power,10 Solar
+S111,Other Electricity Production n.e.c.,7 Bioenergy
+S111,Other Electricity Production n.e.c.,8 Bioenergy + CCS
+S111,Other Electricity Production n.e.c.,12 Other Renewable

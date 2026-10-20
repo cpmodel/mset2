@@ -1,0 +1,7 @@
+*
+!.gitignore
+*.csv
+!src/
+!src/**
+src/*.xlsx
+src/debug/
