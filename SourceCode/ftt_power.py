@@ -200,6 +200,24 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
                 pd.concat(_rows, ignore_index=True) if _rows
                 else pd.DataFrame(columns=['REG_imp', 'TRAD_COMM', 'fuel_change_relative'])
             )
+
+        # FTT-driven labour-intensity growth signal for PROD_COMM=93, composed into
+        # MSET's employment growth rate next year. tech_matrix mode only.
+        _empl_coupling = getattr(ftt_model, 'ftt_employment_coupling', False)
+        _l_elec = getattr(ftt_model, 'ftt_labour_intensity', None)
+        if y == 1 or not _empl_coupling or _l_elec is None:
+            ftt_model._mset_pending_employment_impact = None
+        else:
+            l_vec = _l_elec.reindex(list(ftt_model.titles['T2TI'])).fillna(0.0).values
+            Lx_t  = mewg_t  @ l_vec
+            Lx_t0 = mewg_t0 @ l_vec
+            _delta_n_ftt = _per_unit_growth(Lx_t, Lx_t0, gen_t, gen_t0)
+            _relative_change = pd.Series(_delta_n_ftt, index=_rti_short)
+            ftt_model._mset_pending_employment_impact = pd.DataFrame({
+                'REG_imp': _relative_change.index,
+                'PROD_COMM': 93,
+                'employment_change_relative': _relative_change.values,
+            })
     # Assess investment
     ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, y)
     # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019

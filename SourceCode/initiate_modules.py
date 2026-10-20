@@ -1114,8 +1114,10 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         # REG_imp | PROD_COMM | vol_total
         # empl_new = MRIO_vec_to_df_DEF(Empl_model.recalc_empl_base(IO_model.q_base), 'vol_total')
         # empl_new = empl_new.merge(Prod_cost.empl_base.rename(columns={'vol_total':'vol_base'}), how='left', on=['REG_imp','PROD_COMM'])
-        empl_new = Empl_model.recalc_empl_base_NEW()
-        dempl_productivity = empl_new['d_employment']   
+        # FTT's electricity-sector labour-intensity growth signal, stored by ftt_power.py.
+        _ftt_empl_impact = getattr(ftt_model, '_mset_pending_employment_impact', None) if ftt_model is not None else None
+        empl_new = Empl_model.recalc_empl_base_NEW(ftt_employment_impact=_ftt_empl_impact)
+        dempl_productivity = empl_new['d_employment']
         # ! this has an effect on compensation!!! 
         dlabor_productivity = MRIO_vec_to_df_DEF(empl_new['d_labor'], 'dlabor_prod')
 

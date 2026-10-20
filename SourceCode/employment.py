@@ -295,7 +295,7 @@ class empl:
         
         return employment
     
-    def recalc_empl_base_NEW(self):
+    def recalc_empl_base_NEW(self, ftt_employment_impact=None):
         # re-calculate empl based on q_base; productivity changes are coming through econometrics
         # note: Q is fixed; K, K-1 is changing
         dK = np.nan_to_num(self.common['k'] / self.common['k1'], nan=1.0, posinf=1.0, neginf=1.0) - 1
@@ -312,14 +312,25 @@ class empl:
             #  self.common['empl_base'] * (dK * self.params['K_ln_L1']) + \
                 # self.common['empl_base'] * (dW * self.params['W_ln_L1'])
 
-        # 2022 
+        # 2022
         # employment at the end of 2021 == empl_base
         # 2022 employment start == empl_base + empl_base * dK * e + empl_base * dW * e
-        # 2022 employment end == [2022 employment start] + [2022 employment start] * dQ * e 
+        # 2022 employment end == [2022 employment start] + [2022 employment start] * dQ * e
 
-        empl_t0 = self.common['empl_base'] * (dK * self.params['K_ln_L1']) + \
-                self.common['empl_base'] * (dW * self.params['W_ln_L1'])
-        
+        d_econ_rate = dK * self.params['K_ln_L1'] + dW * self.params['W_ln_L1']
+
+        # Compose in FTT's PROD_COMM=93 labour-intensity growth rate multiplicatively;
+        # MRIO_df_to_vec defaults missing region-sectors to 0.0, so other sectors are
+        # left unaffected: (1+econ)*(1+0)-1 == econ.
+        if ftt_employment_impact is not None and not ftt_employment_impact.empty:
+            d_ftt_rate = MRIO_df_to_vec(
+                ftt_employment_impact.rename(columns={'employment_change_relative': 'd_ftt_rate'}),
+                'REG_imp', 'PROD_COMM', 'd_ftt_rate', self.R_list, self.P_list
+            )
+            d_econ_rate = (1 + d_econ_rate) * (1 + d_ftt_rate) - 1
+
+        empl_t0 = self.common['empl_base'] * d_econ_rate
+
         return {
             'd_employment': empl_t0,
             'd_labor': empl_t0 * MRIO_df_to_vec(self.common['wage'], 'REG_imp', 'PROD_COMM', 'wage', self.R_list, self.P_list)
