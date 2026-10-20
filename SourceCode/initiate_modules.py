@@ -374,7 +374,26 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         # ---> but this changes Q for energy
 
         # adjust IO
-        ind_energy = Energy_emissions.calc_monetary_io_change(ener_change['io_impact'])
+        io_impact = ener_change['io_impact']
+        # FTT coupling: the power sector's (PROD_COMM=93) monetary input demand comes from FTT's
+        # signal (stored by ftt_power.py), not from MSET's own price-driven substitution. io_impact
+        # only holds fuel rows, so the power sector's rows are built from IND_BASE: every commodity
+        # FTT has a signal for, over all supplier regions. Without a signal (first FTT year) the
+        # power sector's coefficients are left unchanged.
+        if ftt_model is not None:
+            io_impact = io_impact.astype({'REG_imp': 'str', 'TRAD_COMM': 'int'})
+            io_impact = io_impact[io_impact['PROD_COMM'].astype(int) != 93]
+            _ftt_impact = getattr(ftt_model, '_mset_pending_fuel_io_impact', None)
+            if _ftt_impact is not None and not _ftt_impact.empty:
+                _ind = Energy_emissions.IND_BASE
+                # dtypes drift between str/int/categorical across this codebase's DataFrames.
+                _power_rows = (_ind.loc[_ind['PROD_COMM'].astype(int) == 93, ['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM']]
+                               .astype({'REG_imp': 'str', 'TRAD_COMM': 'int'})
+                               .merge(_ftt_impact.astype({'REG_imp': 'str', 'TRAD_COMM': 'int'})
+                                                 .rename(columns={'fuel_change_relative': 'fuel_use_change_relative'}),
+                                      how='inner', on=['REG_imp', 'TRAD_COMM']))
+                io_impact = pd.concat([io_impact, _power_rows], ignore_index=True)
+        ind_energy = Energy_emissions.calc_monetary_io_change(io_impact)
         A_energy = IO_model.build_A_matrix(input_df=ind_energy, variable='IO_coef_ener')
         # calculate IO impact
         IO_model.update_Leontieff(A_energy)
