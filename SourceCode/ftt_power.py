@@ -163,8 +163,30 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         # Defer the FTT->MSET fuel-mix signal to ftt_model instead of writing new_IO
         # directly; initiate_modules.py composes it in next year. y == 1 skipped:
         # t-1 is FTT's init state, not a real observation.
+        _io_mode = ftt_model.ftt_power_io_mode
+
         if y == 1:
             ftt_model._mset_pending_fuel_io_impact = None
+        elif _io_mode == 'tech_matrix':
+            # (A_elec @ MEWG_t / sum MEWG_t) / (A_elec @ MEWG_t-1 / sum MEWG_t-1) - 1,
+            # per (region, GLORIA commodity)
+            A_elec = ftt_model.ftt_cefio_a_elec
+            Ax_t  = mewg_t  @ A_elec.T.values
+            Ax_t0 = mewg_t0 @ A_elec.T.values
+            _delta_tm = _per_unit_growth(Ax_t, Ax_t0, gen_t, gen_t0)
+            # Keep commodities with a non-zero recipe; optionally drop the power sector's own
+            # row (TRAD_COMM=93) to avoid a self-referential feedback.
+            _codes = A_elec.index.to_numpy().astype(int)
+            _keep = (A_elec.values != 0).any(axis=1)
+            if ftt_model.ftt_tech_matrix_exclude_own_sector:
+                _keep &= _codes != 93
+            ftt_model._mset_pending_fuel_io_impact = (
+                pd.DataFrame(_delta_tm[:, _keep], index=_rti_short, columns=_codes[_keep])
+                .rename_axis(index='REG_imp', columns='TRAD_COMM')
+                .stack()
+                .rename('fuel_change_relative')
+                .reset_index()
+            )
         else:
             _rows = []
             for _sector, _growth in _ftt_fuel_growth_by_sector.items():
