@@ -6,6 +6,9 @@ Created on 2024-04-08 13:35:39
 
 import os
 import re
+import sys
+import signal
+import faulthandler
 import shutil
 import pickle
 import glob
@@ -22,6 +25,60 @@ def atomic_pickle_dump(obj, path):
     with open(tmp_path, 'wb') as f:
         pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
     os.replace(tmp_path, path)
+
+
+class _Tee:
+    """File-like wrapper that copies everything written to `stream` into `logfile` too."""
+    def __init__(self, stream, logfile):
+        self._stream = stream
+        self._logfile = logfile
+
+    def write(self, data):
+        try:
+            self._logfile.write(data)
+            self._logfile.flush()  # flushed every write so the log survives a crash
+        except (OSError, ValueError):
+            pass  # a broken log must never kill the run
+        try:
+            return self._stream.write(data)
+        except (OSError, ValueError):
+            return len(data)  # terminal gone (e.g. ssh dropped): keep running, the log still has it
+
+    def flush(self):
+        try:
+            self._stream.flush()
+        except (OSError, ValueError):
+            pass
+
+    def __getattr__(self, name):  # isatty, fileno, encoding, ... (pdb, tqdm need them)
+        return getattr(self._stream, name)
+
+
+def start_log_file(path):
+    """Copy stdout and stderr (prints, warnings, uncaught tracebacks) to `path` from now on.
+
+    Stays active until the process exits, so a traceback that escapes the run is logged too.
+    """
+    logfile = open(path, 'a', encoding='utf-8', errors='replace')
+    logfile.write(f"--- log started {datetime.now().isoformat(timespec='seconds')} ---\n")
+    sys.stdout = _Tee(sys.stdout, logfile)
+    sys.stderr = _Tee(sys.stderr, logfile)
+
+    # native crashes (segfault, abort) leave no Python traceback: dump the stack into the log
+    faulthandler.enable(file=logfile)
+
+    # a hangup (ssh dropped) or terminate would otherwise end the process without a trace.
+    # SIGKILL (e.g. the out-of-memory killer) cannot be caught: then the log just stops.
+    def _on_signal(signum, frame):
+        print(f"!!! received signal {signal.Signals(signum).name}: stopping the run", flush=True)
+        raise SystemExit(128 + signum)
+
+    for name in ('SIGHUP', 'SIGTERM'):
+        if hasattr(signal, name):
+            try:
+                signal.signal(getattr(signal, name), _on_signal)
+            except ValueError:  # not in the main thread
+                pass
 
 
 class run_paths:

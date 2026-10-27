@@ -84,7 +84,7 @@ from SourceCode.variables import variables_table
 from SourceCode.normal_output import normal_output_mod
 from SourceCode.ftt_power import solve_year_ftt
 from SourceCode.cost_curves import cost_curves
-from SourceCode.utils import temporary_storage, run_paths, atomic_pickle_dump
+from SourceCode.utils import temporary_storage, run_paths, atomic_pickle_dump, start_log_file
 from SourceCode.utils import logging
 from SourceCode.utils import MRIO_df_to_vec, MRIO_vec_to_df, MRIO_mat_to_df
 from SourceCode.initiate_modules import initiate_modules
@@ -245,6 +245,8 @@ class ModelRun:
         #   concurrent calibration runs at different folders.
         self.keep_temp = istruefalse(config.get('settings', 'keep_temp', fallback='False'))
         self.debug_iter_csv = istruefalse(config.get('settings', 'debug_iter_csv', fallback='False'))
+        # write_log: copy console output (incl. warnings and tracebacks) to Results/<run_id>/run.log as it happens.
+        self.write_log = istruefalse(config.get('settings', 'write_log', fallback='False'))
         self.residuals_dir = config.get('settings', 'residuals_dir', fallback='Residuals')
         os.makedirs(self.residuals_dir, exist_ok=True)
 
@@ -271,6 +273,8 @@ class ModelRun:
         self.paths = run_paths(self.scenario_name, config.get('settings', 'run_id', fallback=None),
                                suffix=config.get('settings', 'suffix', fallback=None))
         self.run_id = self.paths.run_id
+        if self.write_log:
+            start_log_file(os.path.join(self.paths.results_dir, 'run.log'))
         print(f"Run id: {self.run_id}")
         # keep the exact settings next to the results they produced
         shutil.copy2(self.settingsini or 's_base.ini', os.path.join(self.paths.results_dir, 'settings.ini'))
