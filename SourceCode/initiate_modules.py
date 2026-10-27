@@ -4,6 +4,7 @@ Created on Fri Dec  5 09:44:43 2025
 
 @author: hartvig
 """
+import os
 import pandas as pd
 import numpy as np
 import time
@@ -53,7 +54,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         EXOG_VARS.GOV_BASE = self.V.read_var('government_consumption', year-1, as_df=True).rename(columns={'government_consumption':'VIGA'}).set_index(['REG_exp','REG_imp','TRAD_COMM'])
 
     # Construct scenario module
-    Scenario = scenario(EXOG_VARS, self.scenario_path, Log, year, self.years)
+    Scenario = scenario(EXOG_VARS, self.scenario_path, Log, year, self.years, self.temp)
     Scenario.set_carbon_tax()
 
     # INITIALIZE VARIABLES
@@ -1778,8 +1779,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         if iter_run > 1:
             price_cond = np.max(np.abs(np.nan_to_num((dp_all - dp_all_old))))
 
-            DEBUG = True
-            if DEBUG:
+            if self.debug_iter_csv:
                 pd.DataFrame({
                     'output': dq_total,
                     'empl': dempl_total,
@@ -1797,7 +1797,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
                     'dq_trade_eff': dq_trade_eff,
                     'dq_io_change': dq_io_change,
                     'empl_constraint': employment_constraint['dL'],
-                    'v_output_growth': v_output_growth}).to_csv("Temp\\iter{}-{}.csv".format(year, iter_run))
+                    'v_output_growth': v_output_growth}).to_csv(os.path.join(self.temp.PATH, "iter{}-{}.csv".format(year, iter_run)))
         else:
             price_cond = np.inf
         

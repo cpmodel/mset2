@@ -106,7 +106,8 @@ class ener_balance:
         self.ALL_PROCESS_EMISSIONS = EXOG_VARS.ALL_PROCESS_EMISSIONS
         self.ALL_FUELS = EXOG_VARS.ALL_FUELS.query("physical_value > 0")
 
-        self.temp = temporary_storage("Temp")
+        # share the run's temp storage (set on the scenario object by ModelRun)
+        self.temp = scenario.temp
 
         self.emission_matrix = None
         self.scope1 = None

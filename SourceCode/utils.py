@@ -5,6 +5,8 @@ Created on 2024-04-08 13:35:39
 """
 
 import os
+import re
+import shutil
 import pickle
 import glob
 import pandas as pd
@@ -13,9 +15,63 @@ from pathlib import Path
 from datetime import datetime
 from scipy import sparse
 
+
+def atomic_pickle_dump(obj, path):
+    """Pickle to `path` so concurrent readers never see a partially written file."""
+    tmp_path = f"{path}.{os.getpid()}.tmp"
+    with open(tmp_path, 'wb') as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp_path, path)
+
+
+class run_paths:
+    """Per-run directories so several runs can share one checkout concurrently.
+
+    Every run gets an id, `{timestamp}_{scenario_name}[_{suffix}]` unless `run_id` is given
+    (an explicit `run_id` is used as is, `suffix` is ignored), and its own
+    Temp/<id>, Log/<id> and Results/<id> (FTT output goes to Results/<id>/ftt_output). The
+    Results/<id> folder is created with exist_ok=False, which is what claims the id: a clash
+    between two auto-generated ids gets a numeric suffix, an explicit `run_id` that already
+    exists raises instead of overwriting another run's output.
+    """
+    def __init__(self, scenario_name, run_id=None, base=".", suffix=None):
+        explicit = run_id is not None
+        if not explicit:
+            run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{scenario_name}"
+            # the suffix becomes part of a folder name: keep it filesystem-safe
+            suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", suffix.strip()) if suffix else ""
+            if suffix:
+                run_id = f"{run_id}_{suffix}"
+
+        n = 1
+        while True:
+            candidate = run_id if n == 1 else f"{run_id}_{n}"
+            results_dir = os.path.join(base, "Results", candidate)
+            try:
+                os.makedirs(results_dir)
+                break
+            except FileExistsError:
+                if explicit:
+                    raise
+                n += 1
+
+        self.run_id = candidate
+        self.results_dir = results_dir
+        self.temp_dir = os.path.join(base, "Temp", candidate)
+        self.log_dir = os.path.join(base, "Log")
+        self.ftt_dir = os.path.join(results_dir, "ftt_output")
+        for d in (self.temp_dir, self.ftt_dir):
+            os.makedirs(d, exist_ok=True)
+
+
 class temporary_storage:
     def __init__(self, path="Temp"):
         self.PATH = path
+        os.makedirs(self.PATH, exist_ok=True)
+
+    def cleanup(self):
+        """Remove the whole storage folder (used once a run has finished)."""
+        shutil.rmtree(self.PATH, ignore_errors=True)
 
     def save_to_pickle(self, obj, write_name):
         with open(os.path.join(self.PATH, f"{write_name}.pkl"), 'wb') as write_file:
@@ -40,8 +96,8 @@ class temporary_storage:
 
 
 class logging:
-    def __init__(self, path="Log"):
-        self.PATH = os.path.join(path, self.get_time_str())
+    def __init__(self, path="Log", subdir=None):
+        self.PATH = os.path.join(path, subdir if subdir else self.get_time_str())
         # p = Path(self.PATH).resolve()
         # p.mkdir(parents=True, exist_ok=True)
         Path(self.PATH).mkdir(parents=True, exist_ok=True)
