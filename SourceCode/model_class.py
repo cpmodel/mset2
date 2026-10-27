@@ -285,25 +285,29 @@ class ModelRun:
         # CATCH if no SCENARIO provided or if SCENARIO file does not exists
         
         if self.scenario_name is None:
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("######################################################################################")
             print("!!!! ERROR: No scenario provided. In CMD mode you need to provide a scenario to run!")
             print("######################################################################################")
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit()
         
         cwd_ = os.getcwd()
         self.scenario_path = os.path.join(cwd_, "Data", "MSET_data", "Scenarios", f"{self.scenario_name}.xlsx")
         if not (os.path.isfile(self.scenario_path)):
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("")
             print("######################################################################################")
             print("!!!! ERROR: Scenario file not found!")
             print("!!!! NOT FOUND: {}".format(self.scenario_path))
             print("######################################################################################")
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit()
         
         print("######################################################################################")
@@ -457,7 +461,8 @@ class ModelRun:
     def run(self):
         
         for year in self.years:
-            os.system("title MSET-v0.1.1-alpha - {}".format(year))
+            if os.name == 'nt':
+                os.system("title MSET-v0.1.1-alpha - {}".format(year))
             if self.ftt_model is None:
                 self.DYNAMIC, self.EXOG_VARS, self.CALIBRATING, self.MRIO_df_to_vec_DEF, \
                                     self.MRIO_vec_to_df_DEF, self.ftt_model, self.Log = self.solve_year(year, self.DYNAMIC, self.EXOG_VARS, 
@@ -722,13 +727,15 @@ class ModelRun:
     
         # ! random check on strange prices
         if np.min(dyn_price['price_index']) < 0:
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("######################################################################################")
             print("!!!! ERROR: We have a price index that's below zero! That's not good.")
             print("######################################################################################")
             import pdb; pdb.set_trace()
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit()  
     
         price_index = self.V.read_var('price_index', year)

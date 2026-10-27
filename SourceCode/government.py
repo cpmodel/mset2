@@ -100,12 +100,14 @@ class gov:
         # fishing [22, 23]
         # mining [24, 40]
         if(len(self.P) != 120):
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("######################################################################################")
             print("!!!! ERROR: Royalties can only be calculated with 120 sectors for now.")
             print("######################################################################################")
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit() 
         q_prev = self.MRIO_vec_to_df_DEF(q_prev, 'q_prev').query("PROD_COMM > 21 & PROD_COMM < 41")
         q_curr = self.MRIO_vec_to_df_DEF(q, 'q').query("PROD_COMM > 21 & PROD_COMM < 41")
