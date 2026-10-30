@@ -347,7 +347,7 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector
+            from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
             self._solve_year_ftt = solve_year_ftt
 
@@ -386,8 +386,8 @@ class ModelRun:
 
                 # Assess investment
                 self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
-                # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
-                self.ftt_model.investment[year] = self.ftt_model.investment[year] * 1.33 * 1.17
+                # Convert mEUR 2010 to th USD 2019 (MSET investment units)
+                self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
 
         #%%
@@ -1533,11 +1533,12 @@ class ModelRun:
                 # Use the distribution from INV_model.investment_induced in the electricity sector to share 
                 # capital goods across REG_exp
                 elec_investment_induced = INV_model.investment_induced.loc[INV_model.investment_induced.PROD_COMM == 93, :].copy()
-                elec_investment_totals = elec_investment_induced.groupby(['REG_imp', 'PROD_COMM']).sum()
-                # Merge back the group totals into the original DataFrame
-                elec_investment_induced = elec_investment_induced.merge(elec_investment_totals.reset_index()[['REG_imp', 'dy']], on='REG_imp', suffixes=('', '_Total'))
-                # Calculate the share (percentage) of each value within its group
-                elec_investment_induced['dy_share'] = (elec_investment_induced['dy'] / elec_investment_induced['dy_Total'])
+                # FTT investment is already split by capital good (TRAD_COMM), so only the
+                # supplier-region (REG_exp) share within each (REG_imp, TRAD_COMM) is needed
+                elec_investment_induced['dy_Total'] = elec_investment_induced.groupby(['REG_imp', 'TRAD_COMM'])['dy'].transform('sum')
+                elec_investment_induced['dy_share'] = np.divide(elec_investment_induced['dy'], elec_investment_induced['dy_Total'],
+                                                                out=np.zeros(len(elec_investment_induced)),
+                                                                where=elec_investment_induced['dy_Total'] != 0)
                 # Get FTT investment
                 ftt_inv0 = pd.DataFrame(ftt_model.investment[year - 1], index = INV_model.R_list, columns = INV_model.P_list).reset_index().melt(
                                             id_vars='index',
@@ -1564,11 +1565,13 @@ class ModelRun:
                 #                             value_name='FTT_investment'
                 #                         ).rename(columns={'index': 'REG_imp'})
                 elec_investment_induced = elec_investment_induced.merge(ftt_inv1, on=['REG_imp', 'TRAD_COMM'], suffixes=('', '_share'))
+                elec_investment_induced['FTT_investment'] = elec_investment_induced['FTT_investment'] * elec_investment_induced['dy_share']
                 elec_investment_induced = elec_investment_induced.groupby(['REG_exp', 'TRAD_COMM', 'REG_imp']).sum().reset_index()
                 # Allcoate matching indices
                 elec_investment_induced = elec_investment_induced.merge(INV_model.dy_inv_induced.reset_index(), on=['REG_exp', 'TRAD_COMM', 'REG_imp'], suffixes=('', '_'))
                 elec_investment_induced = elec_investment_induced.set_index('index')
-                # Add electricity induced investment
+                # This adds FTT investment to current demand only; it is not yet carried into
+                # investment_induced for future MSET capital-stock dynamics.
                 INV_model.dy_inv_induced.loc[elec_investment_induced.index, 'dy'] += elec_investment_induced['FTT_investment']
         
         DYNAMIC["dy_inv_induced_L1"] = MRIO_df_to_vec_DEF(INV_model.dy_inv_induced.rename(columns={'TRAD_COMM':'PROD_COMM','REG_imp':'IMP','REG_exp':'REG_imp'}), 'dy')

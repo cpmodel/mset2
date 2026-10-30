@@ -8,16 +8,39 @@ Created on Fri Nov 28 11:17:44 2025
 import pandas as pd
 import numpy as np
 import datetime
+import re
 from pathlib import Path
 import json
 import pickle
 
+# MWIY is in mEUR 2010. Convert to mUSD 2010 (1.33), then to mUSD 2019 (1.17),
+# then to th USD 2019 (1000), which is the unit of MSET's investment variables.
+FTT_INVESTMENT_TO_TH_USD = 1.33 * 1.17 * 1000
+
+
+def _normalise_t2ti_name(name):
+    """Remove a leading numeric label and separator from an FTT technology name."""
+    return re.sub(r'^\s*\d+\s*[.\-:]?\s*', '', str(name))
+
+
 def ftt_investment_by_mrio_sector(ftt_model, y):
     """Map FTT's MWIY (investment by technology) to MRIO sectors via ftt_inv_converter."""
     investment_by_tech = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, y]
+    converter_cols = list(ftt_model.ftt_inv_converter.columns)
+    converter_keys = [_normalise_t2ti_name(name) for name in converter_cols]
+    title_keys = [_normalise_t2ti_name(name) for name in ftt_model.titles['T2TI']]
+
+    if len(set(title_keys)) != len(title_keys):
+        raise ValueError(f"Duplicate T2TI titles after normalisation: {title_keys}")
+    if len(set(converter_keys)) != len(converter_keys):
+        raise ValueError(f"Duplicate converter columns after normalisation: {converter_keys}")
+
+    missing = sorted(set(converter_keys) - set(title_keys))
+    if missing:
+        raise ValueError(f"FTT investment converter columns missing from T2TI titles: {missing}")
+
     investment_by_mrio_sector = (
-        pd.DataFrame(investment_by_tech, columns=list(ftt_model.titles['T2TI']))
-          .reindex(columns=list(ftt_model.ftt_inv_converter.columns)).values
+        pd.DataFrame(investment_by_tech, columns=title_keys)[converter_keys].to_numpy()
     )
     return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
             investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
@@ -169,8 +192,8 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             self.V.write_var_df('new_IO', year, _new_io)
     # Assess investment
     ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, y)
-    # Convert mEUR 2010 to mUSD 2010 and then to mUSD 2019
-    ftt_model.investment[year] = ftt_model.investment[year] * 1.33 * 1.17
+    # Convert mEUR 2010 to th USD 2019 (MSET investment units)
+    ftt_model.investment[year] = ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
     # Export results in the last year
     if year == model_end:
