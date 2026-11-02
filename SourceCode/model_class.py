@@ -1725,7 +1725,14 @@ class ModelRun:
                 electr_investment0 = self.V.read_var('dk_base', year, as_df=True, indexed=True)
                 electr_investment0 = electr_investment0.reset_index().loc[electr_investment0.reset_index().PROD_COMM == 93]
                 # FTT investment changes
-                d_ftt_investment = ftt_model.investment[year].sum(axis = 1) / ftt_model.investment[year - 1].sum(axis = 1)
+                previous_ftt_investment = ftt_model.investment[year - 1].sum(axis=1)
+                current_ftt_investment = ftt_model.investment[year].sum(axis=1)
+                d_ftt_investment = np.divide(
+                    current_ftt_investment,
+                    previous_ftt_investment,
+                    out=np.ones_like(current_ftt_investment, dtype=float),
+                    where=previous_ftt_investment != 0,
+                )
                 # Apply growth rates
                 electr_investment1 = electr_investment0.dk_base.values * d_ftt_investment
                 msk = "PROD_COMM == 93"
