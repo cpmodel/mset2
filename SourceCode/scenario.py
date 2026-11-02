@@ -877,8 +877,9 @@ class scenario:
         inv_spending = inv_spending.drop(index=0)
         inv_spending = inv_spending.reset_index().drop(columns=["index"])
         inv_spending = inv_spending.rename(columns={"REG":"REG_imp"})
-        inv_spending["PROD_COMM"] = pd.Series(inv_spending["PROD_COMM"], dtype=int)
-        inv_spending["inv_spend"] = pd.Series(inv_spending["inv_spend"], dtype=float)
+        inv_spending = inv_spending.dropna(how='all').dropna(subset=['PROD_COMM'])
+        inv_spending["PROD_COMM"] = pd.to_numeric(inv_spending["PROD_COMM"]).astype('Int64')
+        inv_spending["inv_spend"] = pd.to_numeric(inv_spending["inv_spend"]).astype(float)
 
         self.inv_spending = inv_spending
 

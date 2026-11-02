@@ -97,11 +97,10 @@ def resolve_hyphen(df_:pd.DataFrame, col_name:str):
     df.loc[:,col_name] = df[col_name].astype(str)
     
     if len(df) > 0:
-        temp_new = df[col_name].str.extract(r"([0-9]{1,})-([0-9]{1,})", expand=False).fillna(0)
-        df['new'] = temp_new.apply(lambda r: np.arange(int(r[0]),int(r[1])+1).tolist() if r[0] != 0 else np.nan, axis=1)
-    
-        df.loc[~df['new'].isna(), col_name] = df.loc[~df['new'].isna(), 'new']
-        df = df.drop(columns=['new'])
+        temp_new = df[col_name].str.extract(r"([0-9]{1,})-([0-9]{1,})", expand=False)
+        new = temp_new.apply(lambda r: np.arange(int(r[0]),int(r[1])+1).tolist() if pd.notna(r[0]) else np.nan, axis=1)
+        mask = new.notna()
+        df[col_name] = new.where(mask, df[col_name]).astype(object)
         df = df.explode(col_name)
         df = df.astype({col_name:'str'})
 
@@ -130,13 +129,9 @@ def resolve_comma(df_:pd.DataFrame, col_name:str):
     df.loc[:,col_name] = df[col_name].astype(str)
     
     if len(df) > 0:
-        df['new'] = np.nan
-        
         sel = df[col_name].str.contains(",")
-        df.loc[sel, 'new'] = df.loc[sel, col_name].str.split(',')
-    
-        df.loc[~df['new'].isna(), col_name] = df.loc[~df['new'].isna(), 'new']
-        df = df.drop(columns=['new'])
+        split = df[col_name].str.split(',').astype(object)
+        df[col_name] = split.where(sel, df[col_name]).astype(object)
         df = df.explode(col_name)
         df = df.astype({col_name:'str'})
 
@@ -263,9 +258,9 @@ def MRIO_df_to_vec(df:pd.DataFrame, country_col:str, sector_col:str, value_col:s
     df_empty = df_empty.astype({'PROD_COMM':'str'})
     df_empty = df_empty.set_index(['REG_imp','PROD_COMM'])
 
-    df_empty.loc[df_.index, 'dy'] = df_[value_col]
+    df_empty.loc[df_.index, 'dy'] = df_[value_col].astype(float).to_numpy()
 
-    return df_empty['dy'].values
+    return df_empty['dy'].to_numpy(copy=True)
 
 def MRIO_mat_to_df(mrio:np.ndarray, products:int, iso3:object=[]):
     # MRIO is 19680 x 19680 matrix, this is 120x164, 120x164   

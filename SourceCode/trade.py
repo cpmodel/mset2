@@ -84,9 +84,9 @@ class trade:
         FD = FD.merge(dp_pre_trade, how='left', on=["TRAD_COMM","REG_imp","REG_exp"])
         
         # fill
-        FD['delta_p'].fillna(0, inplace=True)
-        FD['price_index'].fillna(1, inplace=True)
-        FD['price_index_prev'].fillna(1, inplace=True)
+        FD['delta_p'] = pd.to_numeric(FD['delta_p']).fillna(0).astype(float)
+        FD['price_index'] = pd.to_numeric(FD['price_index']).fillna(1).astype(float)
+        FD['price_index_prev'] = pd.to_numeric(FD['price_index_prev']).fillna(1).astype(float)
 
         # make nominal
         FD['total_constant'] = FD['total']
@@ -160,9 +160,9 @@ class trade:
         trade_df = trade_df.merge(self.dynamics_gdp, how='left', on=['REG_imp'])
 
         # fill
-        trade_df['delta_p'].fillna(0, inplace=True)
-        trade_df['price_index'].fillna(1, inplace=True)
-        trade_df['price_index_prev'].fillna(1, inplace=True)
+        trade_df['delta_p'] = pd.to_numeric(trade_df['delta_p']).fillna(0).astype(float)
+        trade_df['price_index'] = pd.to_numeric(trade_df['price_index']).fillna(1).astype(float)
+        trade_df['price_index_prev'] = pd.to_numeric(trade_df['price_index_prev']).fillna(1).astype(float)
 
         # make nominal
         trade_df['z_bp_ener_constant'] = trade_df['z_bp_ener']

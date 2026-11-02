@@ -112,7 +112,7 @@ class tax_rev:
         # Collect additional labor income
         dtax = old.merge(new.rename(columns={'emission_cost':'emission_cost_prev'}))
         dtax['emission_cost'] = dtax['emission_cost'] / dtax['emission_cost_prev'] - 1.0
-        dtax['emission_cost'].fillna(0, inplace=True)
+        dtax['emission_cost'] = dtax['emission_cost'].fillna(0)
         dtax = dtax.drop(columns=['emission_cost_prev'])  
         return dtax
     

@@ -97,6 +97,10 @@ class household:
         # .astype({'PROD_COMM':'str'})
         HH_elas = HH_elas.merge(price_index_.rename(columns={'REG_imp':'REG_exp','PROD_COMM':'TRAD_COMM'}), how='left', on=['REG_exp','TRAD_COMM'])
         # then calculate tax price hike
+        HH_elas['VIPA'] = pd.to_numeric(HH_elas['VIPA']).astype(float)
+        HH_elas['emission_cost'] = pd.to_numeric(HH_elas['emission_cost']).astype(float)
+        HH_elas['price_index'] = pd.to_numeric(HH_elas['price_index']).astype(float)
+        HH_elas['delta_p'] = pd.to_numeric(HH_elas['delta_p']).astype(float)
         HH_elas['VIPA_nominal'] = HH_elas['VIPA'] * HH_elas['price_index']
         HH_elas['delta_tax_hh'] = np.nan_to_num(HH_elas['emission_cost'] / HH_elas['VIPA_nominal'], nan=0)
         # limit to max 0-300%
@@ -177,6 +181,8 @@ class household:
         # calculation of VIPA after price change
         dHH = self.HH.reset_index("REG_exp", drop=False)
         dHH = dHH.merge(HH_price, how='left', on=["REG_imp","TRAD_COMM"])
+        for _c in ['VIPA','VIPA_prod','VIPA_inc_eff','VIPA_op_eff']:
+            dHH[_c] = pd.to_numeric(dHH[_c]).astype(float)
 
         # Compute new demands assuming constant product and origin country structure
         dHH["delta_y_price"] = dHH["VIPA_op_eff"] * dHH["VIPA"] / dHH["VIPA_prod"]
@@ -221,11 +227,13 @@ class household:
 
         dHH = self.HH.reset_index("REG_exp", drop=False)
         dHH = dHH.merge(HH_price_store, how='left', on=["REG_imp","TRAD_COMM"])
+        for _c in ['VIPA','VIPA_prod','VIPA_inc_eff','VIPA_op_eff','VIPA_save_eff']:
+            dHH[_c] = pd.to_numeric(dHH[_c]).astype(float)
 
         # Compute new demands assuming constant product and origin country structure
         dHH["delta_y_price"] = dHH["VIPA_op_eff"] * dHH["VIPA"] / dHH["VIPA_prod"]
         dHH["delta_y_inc"] = dHH["VIPA_inc_eff"] * dHH["VIPA"] / dHH["VIPA_prod"]
-        dHH["delta_y_save"] = dHH["VIPA_save_eff"].astype("float64") * dHH["VIPA"] / dHH["VIPA_prod"]
+        dHH["delta_y_save"] = dHH["VIPA_save_eff"] * dHH["VIPA"] / dHH["VIPA_prod"]
         
         dHH = dHH.set_index(['REG_imp', 'REG_exp', 'TRAD_COMM'])
         

@@ -259,6 +259,7 @@ class ener_balance:
         # so let's see what effect the prices have on fuel allocation
         energy_flows_substitution = energy_flows.copy()
         # .pipe(lambda d: d[~d['PROD_COMM'].str.contains("FD")]).astype({'PROD_COMM':'int'})
+        energy_flows_substitution['fuel_use'] = pd.to_numeric(energy_flows_substitution['fuel_use']).astype(float)
         # ! exclude refining sectors
         energy_flows_substitution = energy_flows_substitution.pipe(lambda d: d[~d['PROD_COMM'].isin(self.refining_sectors)]).copy()
         energy_flows_substitution = energy_flows_substitution.merge(self.common['delta_price_yoy'].rename(columns={'REG_imp':'REG_exp','PROD_COMM':'TRAD_COMM','dp':'delta_price_yoy'}), how='left', on=['REG_exp','TRAD_COMM'])
@@ -350,11 +351,14 @@ class ener_balance:
         # use price index to calculate relative price change
         energy_flows_substitution['relative_change_price'] = (1 + energy_flows_substitution['delta_price_yoy_avg_fuel']) / (1 + energy_flows_substitution['delta_price_yoy_avg']) - 1.0
         energy_flows_substitution['relative_change_output'] = energy_flows_substitution['q_base'] / energy_flows_substitution['q_prev'] - 1.0
+        for _col in ['relative_change_price', 'relative_change_output']:
+            energy_flows_substitution[_col] = pd.to_numeric(energy_flows_substitution[_col]).astype(float)
 
         #### TJ
         energy_flows_substitution['fuel_use_new'] = energy_flows_substitution['fuel_use']\
               * (1 + energy_flows_substitution['relative_change_price'] * energy_flows_substitution['relative_price_beta'])\
               * (1 + energy_flows_substitution['relative_change_output'] * energy_flows_substitution['output_beta'])
+        energy_flows_substitution['fuel_use_new'] = pd.to_numeric(energy_flows_substitution['fuel_use_new']).astype(float)
         
         # impact is in fuel intensity change
 
@@ -386,9 +390,9 @@ class ener_balance:
         
         energy_flows_substitution = energy_flows_substitution.merge(agg, on=['REG_imp', 'PROD_COMM'], how='left')
 
-        before = energy_flows_substitution['fuel_use_per_sector_before']
-        after = energy_flows_substitution['fuel_use_per_sector_after']
-        after_eff = energy_flows_substitution['fuel_use_per_sector_after_efficiency']
+        before = pd.to_numeric(energy_flows_substitution['fuel_use_per_sector_before']).astype(float)
+        after = pd.to_numeric(energy_flows_substitution['fuel_use_per_sector_after']).astype(float)
+        after_eff = pd.to_numeric(energy_flows_substitution['fuel_use_per_sector_after_efficiency']).astype(float)
 
         # ? we assume that everything changes the same, due to efficiency at this point
         # ? fuel_use_per_sector_delta - fuel_use_per_sector_before ---> efficiency change (1net change)

@@ -665,7 +665,8 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
 
         # ! only works with 120 sectors now
         sel = (profit_rate_mean_L1['profit_rate'] < profit_rate_mean_L1['profit_rate_min']) & (~(profit_rate_mean_L1['PROD_COMM'].isin([115,116,117,118])))
-        profit_rate_mean_L1.loc[sel, 'profit_rate'] = profit_rate_mean_L1['profit_rate_min']
+        if sel.any():
+            profit_rate_mean_L1.loc[sel, 'profit_rate'] = profit_rate_mean_L1.loc[sel, 'profit_rate_min'].astype(profit_rate_mean_L1['profit_rate'].dtype).to_numpy()
         profit_rate_mean_L1 = profit_rate_mean_L1['profit_rate'].values
     dev_profit_rate_L1 = np.nan_to_num(profit_rate_L1 - profit_rate_mean_L1)
     

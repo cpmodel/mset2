@@ -140,19 +140,23 @@ class IO:
         
         # replace
         sel = (~sparse_matrix['Value'].isna()) & (sparse_matrix['Type']=='replace')
-        sparse_matrix.loc[sel,'IO_coef_trade'] = sparse_matrix.loc[sel,'Value']
+        if sel.any():
+            sparse_matrix.loc[sel,'IO_coef_trade'] = sparse_matrix.loc[sel,'Value'].astype(float).to_numpy()
 
         # percentage
         sel = (~sparse_matrix['Value'].isna()) & (sparse_matrix['Type']=='rel')
-        sparse_matrix.loc[sel,'IO_coef_trade'] = sparse_matrix.loc[sel, 'IO_coef_trade'] * (1 + sparse_matrix.loc[sel, 'Value'])
+        if sel.any():
+            sparse_matrix.loc[sel,'IO_coef_trade'] = (sparse_matrix.loc[sel, 'IO_coef_trade'] * (1 + sparse_matrix.loc[sel, 'Value'])).astype(float).to_numpy()
 
         # max IO_coef_trade per column
         sparse_matrix['IO_coef_col_total'] = sparse_matrix.groupby(['REG_imp','PROD_COMM'])['IO_coef_trade'].transform('sum')
 
         mask = sparse_matrix['IO_coef_col_total'] < 0.03
-        sparse_matrix.loc[mask, 'IO_coef_trade'] = sparse_matrix.loc[mask, 'IO_coef_trade'] * (0.03/sparse_matrix.loc[mask, 'IO_coef_col_total'])
+        if mask.any():
+            sparse_matrix.loc[mask, 'IO_coef_trade'] = (sparse_matrix.loc[mask, 'IO_coef_trade'] * (0.03/sparse_matrix.loc[mask, 'IO_coef_col_total'])).astype(float).to_numpy()
         mask = sparse_matrix['IO_coef_col_total'] > 0.97
-        sparse_matrix.loc[mask, 'IO_coef_trade'] = sparse_matrix.loc[mask, 'IO_coef_trade'] * (0.97/sparse_matrix.loc[mask, 'IO_coef_col_total'])
+        if mask.any():
+            sparse_matrix.loc[mask, 'IO_coef_trade'] = (sparse_matrix.loc[mask, 'IO_coef_trade'] * (0.97/sparse_matrix.loc[mask, 'IO_coef_col_total'])).astype(float).to_numpy()
 
         sparse_matrix = sparse_matrix.drop(columns=['Value','Type','IO_coef_col_total'])
         sparse_matrix = sparse_matrix.set_index(['REG_imp','PROD_COMM','REG_exp','TRAD_COMM'])

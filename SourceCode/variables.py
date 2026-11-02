@@ -151,7 +151,7 @@ class variables_table:
             # keep only relevant vars
             df = self.empty_tables[table_id]
             df = df.merge(input_[df.columns.tolist() + [var_name]], how='left').fillna(0)
-            input_use = df[var_name].values
+            input_use = df[var_name].to_numpy(copy=True)
         else:
             input_use = input_.copy()
 
@@ -217,7 +217,7 @@ class variables_table:
         else:
             df[var_name] = input_use
         idxs = df.index.to_list()
-        input_use = df[var_name].values
+        input_use = df[var_name].to_numpy(copy=True)
 
         # first check validation
         max_ = self.var_data[self.var_data["VAR_NAME"]==var_name]['MAX'].values[0]
@@ -338,7 +338,7 @@ class variables_table:
         return pd.read_parquet(parquet_path)
 
     def generate_var_table(self, year):
-        groups_ = self.empty_tables_table[['VAR_NAME','id']].groupby(['id'])
+        groups_ = self.empty_tables_table[['VAR_NAME','id']].groupby('id')
         for k in groups_.groups.keys():
             vars_ = groups_.get_group(k)['VAR_NAME'].to_list()
 

@@ -152,7 +152,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             power_ener_sec = power_ener_base.loc[power_ener_base.TRAD_COMM == sector].copy()
 
             power_ener_sec["growth"] = power_ener_sec["REG_imp"].map(ftt_energy_dem_growth)
-            power_ener_sec["fuel_use"] = power_ener_sec["fuel_use"] * power_ener_sec["growth"]
+            power_ener_sec["fuel_use"] = pd.to_numeric(power_ener_sec["fuel_use"]).astype(float) * pd.to_numeric(power_ener_sec["growth"]).astype(float)
             power_ener_sec = power_ener_sec.drop(columns=['growth'])
             power_ener_sec['PROD_COMM'] = power_ener_sec['PROD_COMM'].astype(int)
             power_ener_sec['TRAD_COMM'] = power_ener_sec['TRAD_COMM'].astype(int)
@@ -174,20 +174,25 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             for _sector, _growth in _ftt_fuel_growth_by_sector.items():
                 _m = _power & (_new_io['TRAD_COMM'] == _sector)
                 if _m.any():
-                    _new_io.loc[_m, 'z_bp'] *= (
-                        _new_io.loc[_m, 'REG_imp'].astype(str).map(_growth).fillna(1.0)
-                    )
+                    _growth_vals = (
+                        _new_io.loc[_m, 'REG_imp'].astype(str).map(_growth)
+                    ).fillna(1.0).astype(_new_io['z_bp'].dtype)
+                    _new_io.loc[_m, 'z_bp'] = _new_io.loc[_m, 'z_bp'] * _growth_vals.to_numpy()
             # Recompute a_bp for the rows we changed, then a_tech for all power rows.
-            _new_io.loc[_pf, 'a_bp'] = np.where(
-                _new_io.loc[_pf, 'output'] != 0,
-                _new_io.loc[_pf, 'z_bp'] / _new_io.loc[_pf, 'output'],
-                0.0
-            )
-            _new_io.loc[_power, 'a_tech'] = (
-                _new_io[_power]
-                .groupby(['REG_imp', 'TRAD_COMM', 'PROD_COMM'])['a_bp']
-                .transform('sum')
-            )
+            if _pf.any():
+                _new_io.loc[_pf, 'a_bp'] = np.where(
+                    _new_io.loc[_pf, 'output'] != 0,
+                    _new_io.loc[_pf, 'z_bp'] / _new_io.loc[_pf, 'output'],
+                    0.0
+                ).astype(_new_io['a_bp'].dtype)
+            if _power.any():
+                _new_io.loc[_power, 'a_tech'] = (
+                    _new_io[_power]
+                    .groupby(['REG_imp', 'TRAD_COMM', 'PROD_COMM'])['a_bp']
+                    .transform('sum')
+                    .astype(_new_io['a_tech'].dtype)
+                    .to_numpy()
+                )
             self.V.write_var_df('new_IO', year, _new_io)
     # Assess investment
     ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, y)

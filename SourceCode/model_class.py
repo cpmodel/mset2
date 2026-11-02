@@ -1088,8 +1088,9 @@ class ModelRun:
         ## GOVT revenues
         # !!! this shouldn't stay here
         if year == self.model_start:
-            DYNAMIC['government_spending_by_revenue_source'] = GOV_model.calc_initial_spending()
-            DYNAMIC['government_spending_by_revenue_source'].iloc[:,1:] = 'NA'
+            _gov_spending = GOV_model.calc_initial_spending()
+            _gov_spending[_gov_spending.columns[1:]] = 'NA'
+            DYNAMIC['government_spending_by_revenue_source'] = _gov_spending
         # govt_revenues = add_regions(DYNAMIC['government_spending_by_revenue_source'])
     
         labor_comp = Prod_cost.labor_comp.reset_index().rename(columns={'labor':'labor_comp_base'})
