@@ -124,13 +124,13 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         # Take energy demand from previous year
         ener_base_t0 = self.V.read_var_df('energy_flows', year - 1)
         # Filter on power sector
-        power_ener_base = ener_base_t0.loc[ener_base_t0.PROD_COMM == '93'].copy()
+        power_ener_base = ener_base_t0.loc[ener_base_t0.PROD_COMM == 93].copy()
         # Get primary energy demand values for t and t-1
         ftt_energy_dem_t = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, y]
         ftt_energy_dem_t0 = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, y - 1]
         # Read energy_flows once before the loop; all sector updates are applied in-place,
         # then written back once after the loop (avoids N reads+writes for N fuel sectors).
-        _ef = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
+        _ef = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM']).sort_index()
         _ftt_fuel_growth_by_sector = {}  # TRAD_COMM -> pd.Series(growth_ratio, index=RTI_short)
         # Loop over supplying sectors (skip TRAD_COMM=93: renewables/nuclear have no
         # fuel commodity input; including them corrupts the electricity demand fed back to FTT)
@@ -150,11 +150,10 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             _ftt_fuel_growth_by_sector[sector] = ftt_energy_dem_growth
             # Filter energy data on sector
             power_ener_sec = power_ener_base.loc[power_ener_base.TRAD_COMM == sector].copy()
-            power_ener_sec = power_ener_sec.rename(columns = {'fuel_use': 'fuel_use_new_adj'})
 
             power_ener_sec["growth"] = power_ener_sec["REG_imp"].map(ftt_energy_dem_growth)
-            power_ener_sec["fuel_use_new_adj"] = power_ener_sec["fuel_use_new_adj"] * power_ener_sec["growth"]
-            power_ener_sec = power_ener_sec.drop('growth', axis = 1)
+            power_ener_sec["fuel_use"] = power_ener_sec["fuel_use"] * power_ener_sec["growth"]
+            power_ener_sec = power_ener_sec.drop(columns=['growth'])
             power_ener_sec['PROD_COMM'] = power_ener_sec['PROD_COMM'].astype(int)
             power_ener_sec['TRAD_COMM'] = power_ener_sec['TRAD_COMM'].astype(int)
             power_ener_sec = power_ener_sec.set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
