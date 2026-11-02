@@ -7,10 +7,8 @@ Created on Fri Nov 28 11:17:44 2025
 
 import pandas as pd
 import numpy as np
-import datetime
 import re
 from pathlib import Path
-import json
 import pickle
 
 # MWIY is in mEUR 2010. Convert to mUSD 2010 (1.33), then to mUSD 2019 (1.17),
@@ -55,11 +53,13 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
     elec_dem = ener_base.loc[ener_base.TRAD_COMM == 93].groupby('REG_imp').sum()['fuel_use'] / 1000
     # Calculate FTT year index
     y = year - ftt_model.ftt_start
+    ftt_scenario = ftt_model.scenarios
     # Get the index of electricity
     elec_idx = ftt_model.titles['JTI'].index('8 Electricity')
     # Assign electricity demand to FTT
-    ftt_model.input['S0']['MEWD'][:, elec_idx, 0, y]  = elec_dem[list(ftt_model.titles['RTI_short'])].values
-    ftt_model.input['S0']['MEWDX'][:, elec_idx, 0, y] = elec_dem[list(ftt_model.titles['RTI_short'])].values
+    electricity_demand = elec_dem[list(ftt_model.titles['RTI_short'])].values
+    ftt_model.input[ftt_scenario]['MEWD'][:, elec_idx, 0, y] = electricity_demand
+    ftt_model.input[ftt_scenario]['MEWDX'][:, elec_idx, 0, y] = electricity_demand
     # Overwrite fuel price index after 2019, when price changes are estimated in MINDSET.
     # fuel_price_index_change is stored on the model object (_mset_fuel_price_index_change)
     # rather than in the FTT input dict, so no change to FTT_Standalone's VariableListing.csv
@@ -197,18 +197,8 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
 
     # Export results in the last year
     if year == model_end:
-        # Update scenario log
-        scenarios_log = {}
-        scenarios_log['S0'] = {}
-        scenarios_log['S0']['run'] = datetime.datetime.timestamp(datetime.datetime.now())
-        scenarios_log['S0']['description'] = "Test Scenario, provided by Cambridge Econometrics"
-        scenarios_log['S0']['years'] = [str(x) for x in ftt_model.timeline]
-        # Save metadata on current model run
         output_dir = Path('.') / 'MINDSET_FTT_Power' / 'Output'
         output_dir.mkdir(parents=True, exist_ok=True)
-        with open(output_dir / 'Scenarios.json', 'w') as f:
-            json.dump(scenarios_log, f)
-
         with open(output_dir / 'Results.pickle', 'wb') as f:
             pickle.dump(ftt_model.output, f)
             
