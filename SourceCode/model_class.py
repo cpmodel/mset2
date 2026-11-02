@@ -352,7 +352,7 @@ class ModelRun:
             self._solve_year_ftt = solve_year_ftt
 
             # Instantiate the run
-            self.ftt_model = ftt()
+            self.ftt_model = ftt(model_end=self.model_end)
 
             # Call solve_year method for each year while MINDSET is not started
             self.ftt_model.ftt_start = min(self.ftt_model.timeline)
