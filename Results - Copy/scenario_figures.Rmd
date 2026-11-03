@@ -1,0 +1,1395 @@
+---
+title: "MINDSET2 Carbon Price scenario"
+subtitle: "IPCC regions; up to 2050"
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M')`"
+output:
+  beamer_presentation:
+    theme: "Antibes"
+    colortheme: "dolphin"
+    fig_width: 8
+    fig_height: 4.5
+    fig_caption: true
+header-includes:
+  - \usepackage[sfdefault,condensed]{roboto}
+  - \usepackage[T1]{fontenc}
+  - \AtBeginSection{}
+  - \AtBeginSubsection{}
+---
+
+
+```{r Load packages,include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(arrow)
+library(knitr)
+library(ggthemes)
+library(RColorBrewer)
+library(kableExtra)
+library(plotly)
+library(tinytex)
+
+sysfonts::font_add_google(name = "Roboto Condensed")
+showtext::showtext_auto()
+```
+
+# 2D variables
+
+
+```{r Load data#1 - 2D vars,include=FALSE}
+# parquey
+# files = list.files(pattern="results_file_long.*3.parquet")
+files = list.files(pattern="results_file_long.*0.csv")
+
+files[1]
+
+# head(open_dataset(files[1]),5)
+
+names(read_csv(files[1]))
+```
+
+
+```{r Load data#2 - 2D vars,include=FALSE}
+# read_and_prefix <- function(filename) {
+#   res <- read_parquet(filename, show_col_types = FALSE) %>%
+#     mutate(scenario=str_extract(filename, "(?<=results\\_file\\_long\\_)[a-z_]{1,}")) %>% 
+#     filter(!is.na(energy_flows)) %>% filter(year > 2025 & REG_imp == 'SAS') %>% filter(energy_flows > 0)
+#   return(res)
+# }
+
+read_and_prefix <- function(filename) {
+  res <- read_csv(filename, show_col_types = FALSE) %>%
+    mutate(scenario=str_extract(filename, "(?<=results\\_file\\_long\\_)[a-z_]{1,}"))
+  return(res)
+}
+
+combined_data <- files %>%
+  map(read_and_prefix) %>%
+  list_rbind()
+
+combined_data <- gather(combined_data, "var_name", "value", -REG_imp,-PROD_COMM,-year,-scenario)
+
+unique(combined_data$scenario)
+unique(combined_data$var_name)
+unique(combined_data$REG_imp)
+
+```
+
+## 1.1 Economic output
+### Economic output - all regions, figure
+\framesubtitle{bn USD, constant 2019 price}
+
+```{r Print 1.1a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>% 
+  filter(var_name == 'normal_output' & year > 2018) %>%
+  # filter(REG_imp != 'EAS') %>%
+  group_by(REG_imp, year, scenario) %>% 
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>% 
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+set_colors <- brewer.pal(n = length(unique(df$REG_imp)), name = "Paired")
+names(set_colors) <- unique(df$REG_imp)
+
+g <- df %>%
+  left_join(base) %>% 
+  filter(scenario != 'empty_') %>%
+  mutate(value = value / base_value - 1) %>% 
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) + 
+  geom_line()  + 
+  theme_few() + 
+  labs(y='economic output (% difference from baseline)', color='region') + 
+  scale_y_continuous(labels=scales::comma) + 
+  scale_color_manual(values=set_colors) + 
+  theme(text = element_text(family = "Roboto Condensed")) + 
+  facet_wrap(~scenario)
+
+g
+
+# ggplotly(g)
+```
+
+### Economic output - all regions, table
+\framesubtitle{bn USD, constant 2019 price}
+
+```{r Print 1.1a table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>% 
+  filter(var_name == 'output' & year > 2018) %>%
+  group_by(REG_imp, year, scenario) %>% 
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>% 
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+df <- df %>% 
+  left_join(base) %>% 
+  mutate(value = value / base_value -1 ) %>% 
+  filter(scenario != 'empty_')
+
+df1 <- df %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>% 
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+  add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050" = 2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+## 1.2 Employment & labour productivity
+
+### Employment, figure
+\framesubtitle{million ppl}
+
+```{r Print 1.2a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>% 
+  filter(var_name %in% c('employment_base','dempl_total') & year > 2018) %>%
+  group_by(REG_imp, year,scenario) %>% 
+  summarise(value = sum(value)) %>% 
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>% 
+  filter(scenario != 'empty_') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>% 
+  ggplot(aes(x=year, y=value, color=REG_imp)) + 
+  geom_line() + 
+  theme_few() + 
+  labs(y='employment (% difference from baseline)', color='region') + 
+  scale_y_continuous(labels=scales::comma) + 
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+
+g
+# ggplotly(g)
+```
+
+### Employment, table
+\framesubtitle{million ppl}
+
+```{r Print 1.2a table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>% 
+  filter(var_name %in% c('employment_base','dempl_total') & year > 2018) %>%
+  group_by(REG_imp, year, scenario) %>% 
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>% 
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+df <- df %>% 
+  left_join(base) %>% 
+  mutate(value = value / base_value -1 ) %>% 
+  filter(scenario != 'empty_')
+
+df1 <- df %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>% 
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+    add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+    add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050" = 2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+### Labour productivity, figure
+\framesubtitle{thousand USD (constant 2019 price) economic output per person employed}
+
+```{r Print 1.2b figure,echo=FALSE,warning=FALSE,message=FALSE}
+
+df <- combined_data %>%
+  filter(var_name %in% c('employment_base','dempl_total','output') & year > 2018) %>%
+  group_by(REG_imp, year, var_name, scenario) %>%
+  summarise(value = sum(value)) %>%
+  pivot_wider(id_cols=c('REG_imp','year','scenario'), names_from='var_name', values_from='value') %>%
+  mutate(labor_productivity = output/(employment_base+dempl_total))
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_lp = labor_productivity)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = labor_productivity / base_lp - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='labour productivity (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+# ggplotly(g)
+```
+
+
+### Labour productivity growth, table
+\framesubtitle{thousand USD (constant 2019 price) economic output per person employed}
+
+```{r Print 1.2b table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name %in% c('employment_base','dempl_total','output') & year > 2018) %>%
+  group_by(REG_imp, year, var_name, scenario) %>%
+  summarise(value = sum(value)) %>%
+  pivot_wider(id_cols=c('REG_imp','year','scenario'), names_from='var_name', values_from='value') %>%
+  mutate(labor_productivity = output/(employment_base+dempl_total))
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_lp = labor_productivity)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = labor_productivity / base_lp - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+    filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+      add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+
+```
+
+
+## 1.3 Investment & capital stock
+### Investment, figure
+\framesubtitle{bn USD, constant 2019 price}
+
+```{r Print 1.3a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name == 'dk_base' & year > 2018) %>%
+  group_by(REG_imp, year, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='investment (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+# ggplotly(g)
+```
+
+
+### Investment, table
+\framesubtitle{bn USD, constant 2019 price}
+
+```{r Print 1.3a table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name == 'dk_base' & year > 2018) %>%
+  group_by(REG_imp, year, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+      add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+### Capital stock, figure
+\framesubtitle{bn USD, constant 2019 price}
+
+```{r Print 1.3b figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name == 'k' & year > 2018) %>%
+  group_by(REG_imp, year, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='capital stock (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+# ggplotly(g)
+```
+
+
+### Capital stock, table
+\framesubtitle{bn USD, constant 2019 price}
+
+```{r Print 1.3b table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name == 'k' & year > 2018) %>%
+  group_by(REG_imp, year, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+      add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+### Capital productivity, figure
+\framesubtitle{USD (constant 2019 price) economic output per USD capital stock}
+
+```{r Print 1.3c figure,echo=FALSE,warning=FALSE,message=FALSE}
+
+df <- combined_data %>%
+  filter(var_name %in% c('k','output') & year > 2018) %>%
+  group_by(REG_imp, year, var_name, scenario) %>%
+  summarise(value = sum(value)) %>%
+  pivot_wider(id_cols=c('REG_imp','year','scenario'), names_from='var_name', values_from='value') %>%
+  mutate(capital_productivity = output/k)
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_cp = capital_productivity)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = capital_productivity / base_cp - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='capital productivity (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+# ggplotly(g)
+```
+
+
+### Capital productivity, table
+\framesubtitle{USD (constant 2019 price) economic output per USD capital stock}
+
+```{r Print 1.3c table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name %in% c('k','output') & year > 2018) %>%
+  group_by(REG_imp, year, var_name, scenario) %>%
+  summarise(value = sum(value)) %>%
+  pivot_wider(id_cols=c('REG_imp','year','scenario'), names_from='var_name', values_from='value') %>%
+  mutate(capital_productivity = output/k)
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_cp = capital_productivity)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = capital_productivity / base_cp - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+      add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+## 1.4 Prices
+### Output deflator (output-weighted), figure
+\framesubtitle{index, 2019 = 100}
+
+```{r Print 1.4a figure,echo=FALSE,warning=FALSE,message=FALSE}
+
+df <- combined_data %>%
+  filter(var_name %in% c('dp_all','output') & year > 2018) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM','year','scenario'), names_from='var_name', values_from='value') %>%
+  group_by(REG_imp, year, scenario) %>%
+  mutate(dp_all = dp_all * output / sum(output)) %>%
+  summarise(dp_all = sum(dp_all)) %>%
+  group_by(REG_imp, scenario) %>%
+  mutate(price_index = cumprod(dp_all + 1) * 100) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_index = price_index)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = price_index / base_index - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='price level (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+# ggplotly(g)
+```
+
+
+### Output deflator (output-weighted), table
+\framesubtitle{index, 2019 = 100}
+
+```{r Print 1.4a table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name %in% c('dp_all','output') & year > 2018) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM','year','scenario'), names_from='var_name', values_from='value') %>%
+  group_by(REG_imp, year, scenario) %>%
+  mutate(dp_all = dp_all * output / sum(output)) %>%
+  summarise(dp_all = sum(dp_all)) %>%
+  group_by(REG_imp, scenario) %>%
+  mutate(price_index = cumprod(dp_all + 1) * 100) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_index = price_index)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = price_index / base_index - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+      add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2,"2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+### Wages, figure
+\framesubtitle{thousand USD current, annual average wage (employment-weighted)}
+
+```{r Print 1.4b figure,echo=FALSE,warning=FALSE,message=FALSE}
+
+df <- combined_data %>%
+  filter(var_name %in% c('wage','employment_base') & year > 2018) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM','year','scenario'), names_from='var_name', values_from='value') %>%
+  group_by(REG_imp, year, scenario) %>%
+  mutate(wage = wage * employment_base / sum(employment_base)) %>%
+  summarise(wage = sum(wage)) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_wage = wage)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = wage / base_wage - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='wages (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+# ggplotly(g)
+```
+
+
+### Wages, table
+\framesubtitle{thousand USD current, annual average wage (employment-weighted)}
+
+```{r Print 1.4b table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(var_name %in% c('wage','employment_base') & year > 2018) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM','year','scenario'), names_from='var_name', values_from='value') %>%
+  group_by(REG_imp, year, scenario) %>%
+  mutate(wage = wage * employment_base / sum(employment_base)) %>%
+  summarise(wage = sum(wage)) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, year, base_wage = wage)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = wage / base_wage - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols='REG_imp', names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+      # digits = 0, format.args = list(big.mark = ",")) %>%
+      add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2,"2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+### Producer prices - energy products, figure
+\framesubtitle{index, 2019 = 100}
+
+```{r Print 1.4c figure,echo=FALSE,warning=FALSE,message=FALSE}
+library(ggh4x)
+
+df <- combined_data %>%
+  filter(var_name %in% c('dp_all') & year > 2024) %>%
+  mutate(fuel = case_when(
+    PROD_COMM %in% c(24,25,62) ~ "Coal",
+    PROD_COMM %in% c(26,63) ~ "Petrol",
+    PROD_COMM %in% c(27,94) ~ "Gas",
+    PROD_COMM == 93 ~ "Electricity",
+  )) %>%
+  filter(!is.na(fuel)) %>%
+  filter(PROD_COMM %in% c(24,25,26,27)) %>%
+  mutate(PROD_COMM = paste0(fuel, " - ", PROD_COMM)) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM','year','scenario'), names_from='var_name', values_from='value') %>%
+  group_by(REG_imp, PROD_COMM, scenario) %>%
+  mutate(price_index = cumprod(dp_all + 1) * 100) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, PROD_COMM, year, base_index = price_index)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = price_index / base_index - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  geom_point() +
+  theme_few() +
+  labs(y='price level (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) +
+  ggh4x::facet_grid2(rows=vars(PROD_COMM), cols=vars(scenario), scales = "free_y", independent = "y")
+
+g
+```
+
+
+### Producer prices - energy products, table
+\framesubtitle{difference from baseline}
+
+```{r Print 1.4c table,echo=FALSE,warning=FALSE,message=FALSE}
+
+df <- combined_data %>%
+  filter(var_name %in% c('dp_all') & year > 2018) %>%
+  mutate(fuel = case_when(
+    PROD_COMM %in% c(24,25,62) ~ "Coal",
+    PROD_COMM %in% c(26,63) ~ "Petrol",
+    PROD_COMM %in% c(27,94) ~ "Gas",
+    PROD_COMM == 93 ~ "Electricity",
+  )) %>%
+  filter(!is.na(fuel)) %>%
+  filter(PROD_COMM %in% c(24,25,26,27)) %>%
+  mutate(PROD_COMM = paste0(fuel, " - ", PROD_COMM)) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM','year','scenario'), names_from='var_name', values_from='value') %>%
+  group_by(REG_imp, PROD_COMM, scenario) %>%
+  mutate(price_index = cumprod(dp_all + 1) * 100) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty_') %>% select(REG_imp, PROD_COMM, year, base_index = price_index)
+
+df_out <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  mutate(value = price_index / base_index - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_imp','PROD_COMM'), names_from=c('year','scenario'), values_from='value')
+
+df_out %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+  add_header_above(c("Region" = 1, "Fuel"=1, "2019", "2025", "2030", "2040", "2050", "2019", "2025", "2030", "2040", "2050")) %>%
+        add_header_above(c(" " = 2, "cprice" = 5, "cprice_rr" = 5)) %>%
+  # add_header_above(c(" " = 1, "Coal (24)" = 5, "Coal (25)" = 5, "Gas (27)" = 5, "Petrol (26)" = 5)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+# 4D variables
+
+```{r Load data#1 - 4D vars,include=FALSE}
+# parquet — load all scenarios
+files = list.files(pattern="results_file_long.*energy_flows_[0-9]{4}.parquet")
+head(open_dataset(files[1]),5)
+```
+
+
+```{r Load data#2 - 4D vars,include=FALSE}
+read_and_prefix <- function(filename) {
+  res <- read_parquet(filename, show_col_types = FALSE) %>%
+    mutate(scenario=str_extract(filename, "(?<=_long_).+(?=_energy_flows_\\d{4})")) %>%
+    mutate(year = as.numeric(str_extract(filename, "[0-9]{4}"))) %>%
+    filter(!is.na(fuel_use)) %>% filter(year > 2018) %>% filter(fuel_use > 0)
+  return(res)
+}
+
+combined_data <- files %>%
+  map(read_and_prefix) %>%
+  list_rbind()
+
+combined_data <- gather(combined_data, "var_name", "value", -REG_imp,-REG_exp,-PROD_COMM,-TRAD_COMM,-year,-scenario)
+
+unique(combined_data$scenario)
+unique(combined_data$var_name)
+unique(combined_data$REG_imp)
+unique(combined_data$year)
+
+```
+
+
+## 2.1 Energy production
+### Energy production, figure - all regions
+\framesubtitle{EJ of energy produced}
+
+```{r Print 2.1a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use') %>%
+  group_by(scenario, year, REG_exp, fuel) %>%
+  summarise(value = sum(value)) %>% ungroup() %>%
+  mutate(value = value / 10**6)
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_exp)) +
+  geom_line() +
+  ggh4x::facet_grid2(cols = vars(fuel), rows=vars(scenario), scales="free_y", independent='y') +
+  theme_few() +
+  labs(y='energy production (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors)
+
+g
+```
+
+
+### Energy production, figure - excl. EAS
+\framesubtitle{EJ of energy produced}
+
+```{r Print 2.1b figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(REG_exp != 'EAS') %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use') %>%
+  group_by(scenario, year, REG_exp, fuel) %>%
+  summarise(value = sum(value)) %>% ungroup() %>%
+  mutate(value = value / 10**6)
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_exp)) +
+  geom_line() +
+  ggh4x::facet_grid2(cols = vars(fuel), rows=vars(scenario), scales="free_y", independent='y') +
+  theme_few() +
+  labs(y='energy production (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors)
+
+g
+```
+
+
+### Energy production - coal, table
+\framesubtitle{EJ of energy produced}
+
+```{r Print 2.1a1 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Hard coal' & year > 2018) %>%
+  group_by(REG_exp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_exp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_exp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+### Energy production - petrol, table
+\framesubtitle{EJ of energy produced}
+
+```{r Print 2.1a2 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Petrol' & year > 2018) %>%
+  group_by(REG_exp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_exp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_exp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+
+### Energy production - natural gas, table
+\framesubtitle{EJ of energy produced}
+
+```{r Print 2.1a3 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Gas' & year > 2018) %>%
+  group_by(REG_exp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_exp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_exp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+
+### Energy production - electricity, table
+\framesubtitle{EJ of energy produced}
+
+```{r Print 2.1a4 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Electricity' & year > 2018) %>%
+  group_by(REG_exp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_exp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_exp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+
+## 2.2 Energy demand
+### Energy demand, figure - all regions
+\framesubtitle{EJ of energy demand}
+
+```{r Print 2.2a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use') %>%
+  group_by(scenario, year, REG_imp, fuel) %>%
+  summarise(value = sum(value)) %>% ungroup() %>%
+  mutate(value = value / 10**6)
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  ggh4x::facet_grid2(cols = vars(fuel), rows=vars(scenario), scales="free_y", independent='y') +
+  theme_few() +
+  labs(y='energy demand (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors)
+
+g
+```
+
+
+### Energy demand, figure - excl. EAS
+\framesubtitle{EJ of energy demand}
+
+```{r Print 2.2b figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(REG_imp != 'EAS') %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use') %>%
+  group_by(scenario, year, REG_imp, fuel) %>%
+  summarise(value = sum(value)) %>% ungroup() %>%
+  mutate(value = value / 10**6)
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  ggh4x::facet_grid2(cols = vars(fuel), rows=vars(scenario), scales="free_y", independent='y') +
+  theme_few() +
+  labs(y='energy demand (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors)
+
+g
+```
+
+
+### Energy demand - coal, table
+\framesubtitle{EJ of energy demand}
+
+```{r Print 2.2a1 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Hard coal' & year > 2018) %>%
+  group_by(REG_imp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_imp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+### Energy demand - petrol, table
+\framesubtitle{EJ of energy demand}
+
+```{r Print 2.2a2 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Petrol' & year > 2018) %>%
+  group_by(REG_imp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_imp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+
+### Energy demand - natural gas, table
+\framesubtitle{EJ of energy demand}
+
+```{r Print 2.2a3 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Gas' & year > 2018) %>%
+  group_by(REG_imp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_imp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+
+
+### Energy demand - electricity, table
+\framesubtitle{EJ of energy demand}
+
+```{r Print 2.2a4 table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,62) ~ "Hard coal",
+    TRAD_COMM %in% c(25) ~ "Lignite",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+    TRUE ~ "Other"
+  )) %>%
+  filter(var_name == 'fuel_use' & fuel == 'Electricity' & year > 2018) %>%
+  group_by(REG_imp, year, fuel, scenario) %>%
+  summarise(value = sum(value)) %>%
+  mutate(value = value / 10**6) %>%
+  ungroup()
+
+base <- df %>% filter(scenario == 'empty') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+  filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_imp'), names_from=c('year','scenario'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+        add_header_above(c(" " = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1, "cprice" = 1, "cprice_rr" = 1)) %>%
+  add_header_above(c(" " = 1, "2019" = 2, "2025" = 2, "2030" = 2, "2040" = 2, "2050"=2)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+## 2.3 Energy intensity of output
+
+```{r Load additional data - 4D vars,include=FALSE}
+files = list.files(pattern="results_file_long.*0.csv")
+
+read_and_prefix <- function(filename) {
+  res <- read_csv(filename, show_col_types = FALSE) %>%
+    mutate(scenario=str_extract(filename, "(?<=_long_).+(?=_\\d+\\.\\w+)"))
+  return(res)
+}
+
+combined_data2 <- files %>%
+  map(read_and_prefix) %>%
+  list_rbind()
+
+combined_data2 <- gather(combined_data2, "var_name", "value", -REG_imp,-PROD_COMM,-year,-scenario)
+combined_data2
+```
+
+
+
+### Energy intensity of output, figure
+\framesubtitle{TJ per mn USD constant price (2019 base) economic output}
+
+```{r Print 2.3a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df_energy <- combined_data %>%
+  filter(var_name == 'fuel_use' & year > 2018) %>%
+  group_by(scenario, year, REG_imp) %>%
+  summarise(energy = sum(value)) %>% ungroup()
+
+df_output <- combined_data2 %>%
+  filter(var_name == 'output' & year > 2018) %>%
+  group_by(scenario, year, REG_imp) %>%
+  summarise(output = sum(value) / 10**3) %>% ungroup()
+
+df <- df_energy %>%
+  left_join(df_output) %>%
+  mutate(intensity = energy / output)
+
+base <- df %>% filter(scenario == 'empty') %>% select(REG_imp, year, base_intensity = intensity)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = intensity / base_intensity - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='energy intensity (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+```
+
+
+### Energy intensity of output, fossil-based energy, figure
+\framesubtitle{TJ per mn USD constant price (2019 base) economic output}
+
+```{r Print 2.3b figure,echo=FALSE,warning=FALSE,message=FALSE}
+df_energy <- combined_data %>%
+  mutate(fuel = case_when(
+    TRAD_COMM %in% c(24,25,62) ~ "Coal",
+    TRAD_COMM %in% c(26,63) ~ "Petrol",
+    TRAD_COMM %in% c(27,94) ~ "Gas",
+    TRAD_COMM == 93 ~ "Electricity",
+  )) %>%
+  filter(fuel %in% c("Coal","Petrol","Gas") & var_name == 'fuel_use' & year > 2018) %>%
+  group_by(scenario, year, REG_imp) %>%
+  summarise(energy = sum(value)) %>% ungroup()
+
+df_output <- combined_data2 %>%
+  filter(var_name == 'output' & year > 2018) %>%
+  group_by(scenario, year, REG_imp) %>%
+  summarise(output = sum(value) / 10**3) %>% ungroup()
+
+df <- df_energy %>%
+  left_join(df_output) %>%
+  mutate(intensity = energy / output)
+
+base <- df %>% filter(scenario == 'empty') %>% select(REG_imp, year, base_intensity = intensity)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty') %>%
+  mutate(value = intensity / base_intensity - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp)) +
+  geom_line() +
+  theme_few() +
+  labs(y='fossil energy intensity (% difference from baseline)', color='region') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+```
+
+# 1D variables
+
+```{r, include=FALSE}
+files = list.files(pattern="results_file_long.*2.csv")
+
+names(read_csv(files[1]))
+
+read_and_prefix <- function(filename) {
+  res <- read_csv(filename, show_col_types = FALSE) %>%
+    mutate(scenario=str_extract(filename, "(?<=results\\_file\\_long\\_)[a-z_]{1,}"))
+  return(res)
+}
+
+combined_data <- files %>%
+  map(read_and_prefix) %>%
+  list_rbind()
+
+combined_data <- gather(combined_data, "var_name", "value", -REG_imp,-year,-scenario)
+
+unique(combined_data$scenario)
+unique(combined_data$var_name)
+unique(combined_data$REG_imp)
+
+```
+
+
+## 3.1 Unemployment
+### Unemployment & shadow unemployment rate, figure
+\framesubtitle{rate, employment divided by labour force}
+
+```{r Print 3.1a figure,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(year > 2018 & var_name %in% c('unemployment_rate','shadow_unemployment_rate'))
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+g <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  # mutate(value = value / base_value - 1) %>%
+  mutate(value = value * 100) %>%
+  ggplot(aes(x=year, y=value, color=REG_imp, linetype=var_name)) +
+  geom_line() +
+  theme_few() +
+  labs(y='unemployment rate (% difference from baseline)', color='region', linetype='variable') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_color_manual(values=set_colors) + 
+  facet_wrap(~scenario)
+
+g
+```
+
+
+### Unemployment & shadow unemployment rate, table
+\framesubtitle{rate, employment divided by labour force}
+
+```{r Print 3.1b table,echo=FALSE,warning=FALSE,message=FALSE}
+df <- combined_data %>%
+  filter(year > 2018 & var_name %in% c('unemployment_rate','shadow_unemployment_rate'))
+
+base <- df %>% filter(scenario == 'empty_') %>% select(-scenario) %>% rename(base_value = value)
+
+df1 <- df %>%
+  left_join(base) %>%
+  filter(scenario != 'empty_') %>%
+  # mutate(value = value / base_value - 1) %>%
+  mutate(value = round(value, digits=2)) %>%
+  mutate(value = scales::percent(value)) %>%
+    filter(year %in% c(2019,2025,2030,2040,2050)) %>%
+  pivot_wider(id_cols=c('REG_imp','scenario'), names_from=c('year','var_name'), values_from='value')
+
+df1 %>%
+  rename(Region = REG_imp) %>%
+  kbl(booktabs=TRUE, col.names = NULL) %>%
+  add_header_above(c(" " = 1, " "=1, "2019"=1,"2025" = 1, "2030" = 1, "2040" = 1, "2050"=1, "2019"=1,"2025" = 1, "2030" = 1, "2040" = 1,"2050"=1)) %>%
+  add_header_above(c(" " = 2, "Shadow unemployment rate (%)" = 5, "Unemployment rate (%)" = 5)) %>%
+  kable_styling(latex_options = c("striped", "scale_down","HOLD_position"))
+```
+
+# Appendix
+## Regions
+
+### List of regions
+
+| Code | Region                               | Main countries |
+| ---- | ------------------------------------ | -------------- |
+| AFR  | Africa                               |                |
+| AJN  | Australia, Japan and New Zealand     |                |
+| EAS  | Eastern Asia                         | CHN, KOR         |
+| EEA  | Eastern Europe and West-Central Asia | RUS, CIS states  |
+| EUR  | Europe                               |                |
+| LAC  | Latin America and Caribbean          |                |
+| MEN  | Middle East                          |                |
+| NAM  | North America                        |                |
+| SAS  | Southern Asia                        | IND, PAK       |
+| SEP  | South-East Asia and Pacific          | IDN, MYS, VNM, PHL |
+
+
+
+```{r Testing, include=FALSE}
+# parquet
+files = list.files(pattern="results_file_long.*4.parquet")
+head(open_dataset(files[1]),5)
+
+files = list.files(pattern="results_file_long.*2.csv")
+names(read_csv(files[1]))
+```
+
