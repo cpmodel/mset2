@@ -273,10 +273,11 @@ class IO:
                  & df_['REG_imp'].isin(R_idx) & df_['PROD_COMM'].isin(P_idx)
                  & df_[variable].notna()).to_numpy()
 
-        A = np.zeros((len(R_idx) * len(P_idx),) * 2)
-        np.add.at(A, (row[valid], col[valid]), df_[variable].to_numpy()[valid])
+        n = len(R_idx) * len(P_idx)
+        flat = (row * n + col)[valid]
+        sums = np.bincount(flat, weights=df_[variable].to_numpy()[valid], minlength=n * n)
 
-        return A
+        return sums.reshape(n, n)
 
     @timing_decorator
     def build_A_base(self):
