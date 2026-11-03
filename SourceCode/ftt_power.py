@@ -15,7 +15,6 @@ import pickle
 # then to th USD 2019 (1000), which is the unit of MSET's investment variables.
 FTT_INVESTMENT_TO_TH_USD = 1.33 * 1.17 * 1000
 
-
 def _normalise_t2ti_name(name):
     """Remove a leading numeric label and separator from an FTT technology name."""
     return re.sub(r'^\s*\d+\s*[.\-:]?\s*', '', str(name))
@@ -42,6 +41,41 @@ def ftt_investment_by_mrio_sector(ftt_model, y):
     )
     return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
             investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
+    
+    
+def redistribute_power_fuel_use(cur, prev, growth):
+    """Rescale power-sector fuel flows (TJ) to FTT's regional fuel growth.
+
+    Applies FTT's year-on-year growth ratio to last year's regional total then
+    splits it across suppliers using MSET's current supplier shares.
+
+    cur, prev: current/previous-year fuel_use for one fuel, indexed by
+               (REG_imp, REG_exp, PROD_COMM, TRAD_COMM) with PROD_COMM=93.
+    growth:    year-on-year ratio by importing region (1.0 = unchanged).
+
+    If a region's current flows sum to zero, previous-year shares are used. If
+    previous flows are also zero, current values are kept. Regions with a
+    missing/NaN growth factor keep their current values.
+
+    """
+    reg = cur.index.get_level_values('REG_imp').astype(str).to_numpy()
+    prev_reg = prev.index.get_level_values('REG_imp').astype(str).to_numpy()
+    prev_total = pd.Series(reg).map(prev.groupby(prev_reg).sum()).fillna(0.0).to_numpy()
+    prev_aligned = prev.reindex(cur.index).fillna(0.0)
+    prev_aligned_total = prev_aligned.groupby(reg).transform('sum').to_numpy()
+    cur_total = cur.groupby(reg).transform('sum').to_numpy()
+
+    cur_v = cur.to_numpy(dtype=float)
+    prev_v = prev_aligned.to_numpy(dtype=float)
+    share = np.where(
+        cur_total > 0, np.divide(cur_v, cur_total, out=np.zeros_like(cur_v), 
+                                 where=cur_total > 0),
+        np.divide(prev_v, prev_aligned_total, out=np.zeros_like(prev_v),
+                  where=prev_aligned_total > 0))
+    growth_row = pd.Series(reg).map(growth).to_numpy(dtype=float)
+    new = np.where(prev_total == 0, cur_v, prev_total * growth_row * share)
+    return pd.Series(np.where(np.isnan(growth_row), cur_v, new), 
+                     index=cur.index, name=cur.name)
 
 def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model, model_start, model_end):
     
@@ -150,15 +184,16 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
             _ftt_fuel_growth_by_sector[sector] = ftt_energy_dem_growth
             # Filter energy data on sector
             power_ener_sec = power_ener_base.loc[power_ener_base.TRAD_COMM == sector].copy()
-
-            power_ener_sec["growth"] = power_ener_sec["REG_imp"].map(ftt_energy_dem_growth)
-            power_ener_sec["fuel_use"] = power_ener_sec["fuel_use"] * power_ener_sec["growth"]
-            power_ener_sec = power_ener_sec.drop(columns=['growth'])
             power_ener_sec['PROD_COMM'] = power_ener_sec['PROD_COMM'].astype(int)
             power_ener_sec['TRAD_COMM'] = power_ener_sec['TRAD_COMM'].astype(int)
-            power_ener_sec = power_ener_sec.set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])
-            # Accumulate updates into _ef (no write until all sectors are done)
-            _ef.update(power_ener_sec)
+            prev_sec = power_ener_sec.set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])['fuel_use']
+            # Current-year power-sector rows for this fuel (MSET's updated supplier split)
+            _is_sec = ((_ef.index.get_level_values('PROD_COMM') == 93)
+                       & (_ef.index.get_level_values('TRAD_COMM') == sector))
+            if not _is_sec.any():
+                continue
+            _ef.loc[_is_sec, 'fuel_use'] = redistribute_power_fuel_use(
+                _ef.loc[_is_sec, 'fuel_use'], prev_sec, ftt_energy_dem_growth).to_numpy()
         # Single write after all sector updates are applied
         self.V.write_var_df('energy_flows', year, _ef.reset_index())
         # Propagate FTT fuel-mix signal into new_IO for the power sector (PROD_COMM=93).
