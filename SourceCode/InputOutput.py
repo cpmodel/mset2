@@ -264,22 +264,19 @@ class IO:
         sel_ = ['REG_imp','REG_exp','TRAD_COMM','PROD_COMM', variable]
         df_ = df_[sel_].astype({variable:'float64'})
 
-        # set dimensions
-        def set_dimensions(what, categories):
-            df_[what] = df_[what].astype('category')
-            df_[what] = df_[what].cat.set_categories(categories, ordered=True)
-            return True
-        
-        set_dimensions('REG_imp',self.R_list)
-        set_dimensions('REG_exp',self.R_list)
-        set_dimensions('PROD_COMM',self.P_list)
-        set_dimensions('TRAD_COMM',self.P_list)
+        # position of each flow in the (region x sector) ordering; rows are
+        # (REG_exp, TRAD_COMM), columns are (REG_imp, PROD_COMM)
+        R_idx, P_idx = pd.Index(self.R_list), pd.Index(self.P_list)
+        row = R_idx.get_indexer(df_['REG_exp']) * len(P_idx) + P_idx.get_indexer(df_['TRAD_COMM'])
+        col = R_idx.get_indexer(df_['REG_imp']) * len(P_idx) + P_idx.get_indexer(df_['PROD_COMM'])
+        valid = (df_['REG_exp'].isin(R_idx) & df_['TRAD_COMM'].isin(P_idx)
+                 & df_['REG_imp'].isin(R_idx) & df_['PROD_COMM'].isin(P_idx)
+                 & df_[variable].notna()).to_numpy()
 
-        df_ = df_.pivot_table(index=['REG_imp','PROD_COMM'], columns=['REG_exp','TRAD_COMM'], values=variable, fill_value=0, dropna=False, observed=False)
-        # numpy matrix stores values the other way
-        df_ = df_.T.values
+        A = np.zeros((len(R_idx) * len(P_idx),) * 2)
+        np.add.at(A, (row[valid], col[valid]), df_[variable].to_numpy()[valid])
 
-        return df_
+        return A
 
     @timing_decorator
     def build_A_base(self):
@@ -717,29 +714,14 @@ class IO:
             # now let's iterate conditional on the new q_max
 
             # ! the thing is if there are multiple impacts from different sectors, we want to keep the minimum
-            # ! but we don't want to duplicate the effects, so we need to iterate on dq_impact
-
-            dq_impact_in = None
-            for i in range(0, len(dq_impact)):
-                dq_impact_ = np.zeros(len(dq_impact))
-                dq_impact_[i] = dq_impact[i]
-                if dq_impact_in is None:
-                    dq_impact_in = dq_impact_
-                else:
-                    dq_impact_in = np.vstack([dq_impact_in, dq_impact_])
-
-            dq_impact_out = None
-            for i in range(0,len(dq_impact)):
-                dq_impact_out_ = np.dot(self.G_BASE.T, dq_impact_in[i])
-                if dq_impact_out is None:
-                    dq_impact_out = dq_impact_out_
-                else:
-                    dq_impact_out = np.vstack([dq_impact_out, dq_impact_out_])
+            # ! but we don't want to duplicate the effects, so we propagate each sector's shock on its own
+            # ! (row i = G.T @ (dq_i * e_i) = dq_i * G[i, :]) and then take the extreme value per sector
+            dq_impact_out = dq_impact[:, None] * self.G_BASE
                     
             idx = np.abs(dq_impact_out).argmax(axis=0)
             dq_impact = dq_impact_out[idx, np.arange(dq_impact_out.shape[1])]
             
-            del dq_impact_in, dq_impact_out
+            del dq_impact_out
 
             # should not go beyond 100%
             dq_impact[(dq_impact * -1) > q_base] = q_base[(dq_impact * -1) > q_base] * -0.90
@@ -789,35 +771,18 @@ class IO:
             # now let's iterate conditional on the new q_max
 
             # ! the thing is if there are multiple impacts from different sectors, we want to keep the minimum
-            # ! but we don't want to duplicate the effects, so we need to iterate on dq_impact
-
-            dq_impact_in = None
-            for i in range(0, len(dq_impact)):
-                dq_impact_ = np.zeros(len(dq_impact))
-                dq_impact_[i] = dq_impact[i]
-                if dq_impact_in is None:
-                    dq_impact_in = dq_impact_
-                else:
-                    dq_impact_in = np.vstack([dq_impact_in, dq_impact_])
-
-            dq_impact_out = None
-            for i in range(0,len(dq_impact)):
-                dq_impact_out_ = np.dot(self.G_BASE.T, dq_impact_in[i])
-                if dq_impact_out is None:
-                    dq_impact_out = dq_impact_out_
-                else:
-                    dq_impact_out = np.vstack([dq_impact_out, dq_impact_out_])
+            # ! but we don't want to duplicate the effects, so we propagate each sector's shock on its own
+            # ! (row i = G.T @ (dq_i * e_i) = dq_i * G[i, :]) and then take the extreme value per sector
+            dq_impact_out = dq_impact[:, None] * self.G_BASE
             #! add upstream here
-            for i in range(0, len(dq_impact)):
-                dq_impact_out_ = np.dot(self.L_BASE, dq_impact_in[i])
-                dq_impact_out = np.vstack([dq_impact_out, dq_impact_out_])
+            dq_impact_out = np.vstack([dq_impact_out, (self.L_BASE * dq_impact).T])
                     
             idx = np.abs(dq_impact_out).argmax(axis=0)
             dq_impact = dq_impact_out[idx, np.arange(dq_impact_out.shape[1])]
             
             # dq_impact = dq_impact_out.sum(axis=0)
             
-            del dq_impact_in, dq_impact_out
+            del dq_impact_out
 
             # should not go beyond 100%
             dq_impact[(dq_impact * -1) > q_base] = q_base[(dq_impact * -1) > q_base] * -0.90
