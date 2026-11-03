@@ -1,0 +1,13 @@
+,1 Baseload,2 Lower mid-load,3 Upper mid-load,4 Peak load,5 Back up reserve,6 Var renewables
+Nuclear,1,0,0,0,0,0
+Oil,1,1,1,1,1,0
+Coal,1,1,1,0,0,0
+Coal + CCS,1,1,1,0,0,0
+Gas,1,1,1,1,1,0
+Gas + CCS,1,1,1,1,1,0
+Bioenergy,1,1,1,0,0,0
+Bioenergy + CCS,1,1,1,0,0,0
+Hydro,1,1,1,1,1,0
+Solar,0,0,0,0,0,1
+Wind,0,0,0,0,0,1
+Other Renewable,1,0,0,0,0,0

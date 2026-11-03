@@ -1368,7 +1368,8 @@ class ModelRun:
     
         # set tax rates
         if year == self.model_start:
-            tax_rates = MRIO_df_to_vec_DEF(DYNAMIC['value_added'][year-1], "taxes") / self.V.read_var("output_current", year-1)
+            q_prev = MRIO_df_to_vec_DEF(EXOG_VARS.INITIAL_Q[EXOG_VARS.INITIAL_Q['year']==year-1], "q_base")
+            tax_rates = MRIO_df_to_vec_DEF(DYNAMIC['value_added'][year-1], "taxes") / q_prev
             tax_rates = np.nan_to_num(tax_rates, nan=0.0, posinf=0.0, neginf=0.0)
             for y in self.years:
                 self.V.write_var('tax_rates', y, tax_rates)
