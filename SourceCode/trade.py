@@ -69,7 +69,7 @@ class trade:
 
         self.dynamics_gdp = dynamics_gdp
         self.dynamics_price = dynamics_price
-        self.trade_params_gdp = self.params.merge(self.dynamics_gdp, on=['REG_imp'])
+        self.trade_params_gdp = self.params.merge(self.dynamics_gdp, how='left', on=['REG_imp'])
 
     def calc_FD_substitution(self, dp_pre_trade):
 
