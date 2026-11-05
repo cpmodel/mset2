@@ -274,12 +274,9 @@ class IO:
                  & df_[variable].notna()).to_numpy()
 
         n = len(R_idx) * len(P_idx)
-        flat = (row * n + col)[valid]
-        sums = np.bincount(flat, weights=df_[variable].to_numpy()[valid], minlength=n * n)
-        counts = np.bincount(flat, minlength=n * n)
-
-        # duplicate entries are averaged (as pivot_table did); empty cells stay 0
-        return np.divide(sums, counts, out=np.zeros(n * n), where=counts > 0).reshape(n, n)
+        A = np.zeros((n, n))  # cells without an entry stay 0
+        A[row[valid], col[valid]] = df_[variable].to_numpy()[valid]
+        return A
 
     @timing_decorator
     def build_A_base(self):
