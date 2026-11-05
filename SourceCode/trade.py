@@ -69,6 +69,7 @@ class trade:
 
         self.dynamics_gdp = dynamics_gdp
         self.dynamics_price = dynamics_price
+        self.trade_params_gdp = self.params.merge(self.dynamics_gdp, on=['REG_imp'])
 
     def calc_FD_substitution(self, dp_pre_trade):
 
@@ -78,9 +79,8 @@ class trade:
         FD['total'] = FD['VDFA'] + FD['VIPA'] + FD['VIGA']
 
         # add and apply elasticity
-        FD = FD.merge(self.params, on=['REG_imp','TRAD_COMM'])
+        FD = FD.merge(self.trade_params_gdp, on=['REG_imp','TRAD_COMM'])
         FD = FD.merge(self.dynamics_price, how='left', on=['TRAD_COMM','REG_exp'])
-        FD = FD.merge(self.dynamics_gdp, how='left', on=['REG_imp'])
         FD = FD.merge(dp_pre_trade, how='left', on=["TRAD_COMM","REG_imp","REG_exp"])
         
         # fill
@@ -152,12 +152,10 @@ class trade:
         trade_df.loc[trade_df['z_bp_ener'] < 0, 'z_bp_ener'] = 0
         
         # first add elasticity parameters
-        trade_df = trade_df.merge(self.params, on=['REG_imp','TRAD_COMM'])
-        # second merge price changes
+        trade_df = trade_df.merge(self.trade_params_gdp, on=['REG_imp','TRAD_COMM'])
+        # Add price changes, then price-index dynamics.
         trade_df = trade_df.merge(dp_pre_trade, how='left', on=["TRAD_COMM","REG_imp","REG_exp"])
-        # third the dynamic variables
         trade_df = trade_df.merge(self.dynamics_price, how='left', on=['TRAD_COMM','REG_exp'])
-        trade_df = trade_df.merge(self.dynamics_gdp, how='left', on=['REG_imp'])
 
         # fill
         trade_df['delta_p'].fillna(0, inplace=True)
