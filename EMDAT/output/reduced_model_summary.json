@@ -1,0 +1,42 @@
+[
+  {
+    "specification": "deaths_unreported",
+    "n_fit": 2417,
+    "n_filled": 1621,
+    "r_squared": 0.29363388,
+    "adj_r_squared": 0.29304865,
+    "sigma": 2.17732082,
+    "smear": 7.55817862,
+    "n_train": 1933,
+    "n_holdout": 484,
+    "median_ae": 132958.79350724,
+    "mean_ae": 1361574.2333788,
+    "median_ape": 0.90314642,
+    "median_ratio": 0.73225367,
+    "ratio_p10": 0.05725066,
+    "ratio_p90": 13.22703643,
+    "coverage_95": 0.93181818,
+    "median_fill": 35483.15337148,
+    "sum_fill": 143097898.87464201
+  },
+  {
+    "specification": "affected_unreported",
+    "n_fit": 2391,
+    "n_filled": 1049,
+    "r_squared": 0.36257121,
+    "adj_r_squared": 0.36203735,
+    "sigma": 2.06910443,
+    "smear": 4.85543114,
+    "n_train": 1911,
+    "n_holdout": 480,
+    "median_ae": 143793.90791148,
+    "mean_ae": 1095681.70910825,
+    "median_ape": 0.86721636,
+    "median_ratio": 0.97373814,
+    "ratio_p10": 0.10248619,
+    "ratio_p90": 15.31027737,
+    "coverage_95": 0.96875,
+    "median_fill": 105045.63212357,
+    "sum_fill": 2640998072.743453
+  }
+]

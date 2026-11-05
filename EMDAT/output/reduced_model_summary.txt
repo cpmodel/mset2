@@ -1,0 +1,17 @@
+Deaths unreported: fit 2417 filled 1621 
+   (Intercept) log1p_affected      log_gdppc 
+    -3.1466272      0.3476272      1.2057296 
+
+Affected unreported: fit 2391 filled 1049 
+ (Intercept) log1p_deaths    log_gdppc 
+   -1.558983     0.784045     1.178114 
+
+        specification n_fit n_filled r_squared adj_r_squared sigma smear
+1   deaths_unreported  2417     1621    0.2936         0.293 2.177 7.558
+2 affected_unreported  2391     1049    0.3626         0.362 2.069 4.855
+  n_train n_holdout median_ae mean_ae median_ape median_ratio ratio_p10
+1    1933       484    132959 1361574     0.9031       0.7323   0.05725
+2    1911       480    143794 1095682     0.8672       0.9737   0.10249
+  ratio_p90 coverage_95 median_fill  sum_fill
+1     13.23      0.9318       35483 1.431e+08
+2     15.31      0.9688      105046 2.641e+09
