@@ -11,7 +11,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from scipy import sparse
 
 class temporary_storage:
     def __init__(self, path="Temp"):
@@ -269,31 +268,31 @@ def MRIO_df_to_vec(df:pd.DataFrame, country_col:str, sector_col:str, value_col:s
 
 def MRIO_mat_to_df(mrio:np.ndarray, products:int, iso3:object=[]):
     # MRIO is 19680 x 19680 matrix, this is 120x164, 120x164   
-    # 1. put into dataframe
+    # 1. convert to float32 and find the positions of the non-zero entries
+    mrio = mrio.astype('float32')
+    # transposed so that the entries are ordered by column first, then by row
+    col, row = np.nonzero(mrio.T)
 
-    # convert to sparse matrix
-    mrio = sparse.csc_matrix(mrio.astype('float32')) #type: ignore
-    mrio = pd.DataFrame.sparse.from_spmatrix(mrio).reset_index()
+    # 2. put the non-zero entries into a dataframe
+    # one dataframe row per non-zero entry: its row-index, column-index and value
+    # both indices run over region-sector pairs, the sector changing fastest:
+    # [sec1-reg1 = 0] [sec2-reg1 = 1] ... [sec120-reg164 = 19679]
+    mrio = pd.DataFrame({
+        'row': row,
+        'col': col,
+        'value': mrio[row, col]
+    })
 
-    # now we have 
-    # columns: index [sec1-reg1 = 0] [sec2-reg1 = 1] ... [sec120 - reg164 = 19680]
-    # rows: 1 2 3 ... 19680
-    # 2. melt
-    mrio = pd.melt(mrio, id_vars=['index']) # type: ignore
-    # now it's
-    # columns: index[==row-index] variable[==column-index] value
-    # rows: 1 2 3 ... 19680
-    mrio = mrio[mrio['value']!=0].copy()
-    # 3. reindex
-    mrio['origin-country'] = (np.floor(mrio['index'] / products)).astype('int16') + 1
-    mrio['TRAD_COMM'] = (mrio['index'] % products).astype('int16') + 1
-    mrio['target-country'] = (np.floor(mrio['variable'] / products)).astype('int16') + 1
-    mrio['PROD_COMM'] = (mrio['variable'] % products).astype('int16') + 1
+    # 3. convert row- and column-index into region and sector numbers
+    mrio['origin-country'] = (np.floor(mrio['row'] / products)).astype('int16') + 1
+    mrio['TRAD_COMM'] = (mrio['row'] % products).astype('int16') + 1
+    mrio['target-country'] = (np.floor(mrio['col'] / products)).astype('int16') + 1
+    mrio['PROD_COMM'] = (mrio['col'] % products).astype('int16') + 1
 
     if len(iso3) > 0: # type: ignore
         # 4. merge country-iso
         mrio = attach_iso3(mrio, iso3, target=True, origin=True)
     mrio['value'] = mrio['value'].astype('float32')
-    mrio = mrio.drop(columns=['index','variable']) # type: ignore
+    mrio = mrio.drop(columns=['row','col']) # type: ignore
     
     return mrio
