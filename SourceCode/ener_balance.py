@@ -582,31 +582,21 @@ class ener_balance:
 
         return tmp_
     
-    def tax_incidence_loop(self, country):
+    def tax_incidence_loop(self, country, carbon_tax_rates, fd_base):
         """
-        This loop calculates the tax incidence given carbon_tax_rate files generated
-        by earlier functions (these are stored in the Temp folder).
-        This loop is only expected to be run within the `calculate_tax_incidence` function
-        in a parallel loop.
+        Calculate tax incidence for one country using prepared rates and final demand.
+        This method is called by calculate_tax_incidence in a parallel loop.
         """
-        carbon_tax_rate = self.temp.read_from_pickle("carbon_tax_rate", delete_=False).pipe(lambda d: d[d['REG_imp']==country])
         carbon_content = self.common['carbon_content'].pipe(lambda d: d[(d['REG_imp'] == country)])
         # calculate emission cost per flow
 
-        carbon_tax_rate = carbon_tax_rate.pipe(lambda d: d[~d['ctax'].isna()])
-        carbon_tax_rate = carbon_tax_rate.astype({'PROD_COMM':'str','TRAD_COMM':'str'})
+        country_carbon_tax_rate = carbon_tax_rates[carbon_tax_rates['REG_imp'] == country]
 
         mrio = self.IND_BASE[(self.IND_BASE['REG_imp']==country)][['REG_imp','REG_exp','PROD_COMM','TRAD_COMM','z_bp']].copy()
         # share of flow within REG_imp / target-sector
         mrio = mrio.astype({'TRAD_COMM': 'int', 'PROD_COMM': 'str'})
 
-        # bring in FD 
-        hh_base = self.HH_BASE.rename(columns={'VIPA':'z_bp'}).assign(PROD_COMM = "FD_1")
-        fcf_base = self.FCF_BASE.rename(columns={'VDFA':'z_bp'}).assign(PROD_COMM = "FD_4")
-        gov_base = self.GOV_BASE.rename(columns={'VIGA':'z_bp'}).assign(PROD_COMM = "FD_3")
-        # now it has REG_imp | PROD_COMM | REG_exp | TRAD_COMM | z_bp
-
-        mrio = pd.concat([mrio, hh_base, fcf_base, gov_base])
+        mrio = pd.concat([mrio, fd_base])
         # price intermediate flows - combustion ONLY
         emission_cost = mrio.merge(carbon_content, on=['REG_imp','PROD_COMM','TRAD_COMM','REG_exp'], how='left')
         # ktCO2 emissions, based on z_bp (real value) and EF (which is ktco2 per kusd, real price)
@@ -615,7 +605,7 @@ class ener_balance:
         emission_cost = emission_cost[(emission_cost['emission_ktco2'] > 0)]
         emission_cost = emission_cost.fillna(0)
 
-        emission_cost = emission_cost.merge(carbon_tax_rate.astype({'PROD_COMM':'str','TRAD_COMM':'int'}), how='left', on=['REG_imp','PROD_COMM','REG_exp','TRAD_COMM'])
+        emission_cost = emission_cost.merge(country_carbon_tax_rate.astype({'PROD_COMM':'str','TRAD_COMM':'int'}), how='left', on=['REG_imp','PROD_COMM','REG_exp','TRAD_COMM'])
         emission_cost = emission_cost[~emission_cost['ctax'].isna()]
         
         emission_cost['emission_cost'] = emission_cost['emission_ktco2'] * emission_cost['ctax'] 
@@ -651,16 +641,28 @@ class ener_balance:
         # print("Calculating tax incidence... Parallel started.")
         # with alive_bar(len(tax_rate['REG_imp'].unique()), title="Generating carbon tax files...") as bar:
 
+        carbon_tax_rates = self.temp.read_from_pickle("carbon_tax_rate", delete_=False)
+        carbon_tax_rates = carbon_tax_rates[~carbon_tax_rates['ctax'].isna()]
+        carbon_tax_rates = carbon_tax_rates.astype({'PROD_COMM':'str','TRAD_COMM':'str'})
+
+        # Add final-demand (FD) household, investment and government flows once
+        # so each country worker can use the same REG_imp, PROD_COMM, REG_exp, TRAD_COMM, z_bp rows.
+        fd_base = pd.concat([
+            self.HH_BASE.rename(columns={'VIPA':'z_bp'}).assign(PROD_COMM="FD_1"),
+            self.FCF_BASE.rename(columns={'VDFA':'z_bp'}).assign(PROD_COMM="FD_4"),
+            self.GOV_BASE.rename(columns={'VIGA':'z_bp'}).assign(PROD_COMM="FD_3")
+        ])
+
         # non-parallel for debugging
         # tmp_df = []
         # for c in carbon_tax_countries:
-        #     tmp_df.append(self.tax_incidence_loop(c))
+        #     tmp_df.append(self.tax_incidence_loop(c, carbon_tax_rates, fd_base))
         # tax_incidence_all = pd.concat(tmp_df)
-        
+
         futures_ = [] 
         with futures.ThreadPoolExecutor() as executor:
             for c in carbon_tax_countries:
-                futures_.append(executor.submit(self.tax_incidence_loop, c))
+                futures_.append(executor.submit(self.tax_incidence_loop, c, carbon_tax_rates, fd_base))
         
             tmp_df = []
             # with tqdm(total=len(futures_)) as progress:
