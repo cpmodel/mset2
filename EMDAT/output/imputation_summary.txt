@@ -1,0 +1,53 @@
+Imputed rows: 3016 
+Observed rows left unchanged: 3018 
+Rows left blank: 3095 
+Holdout events: 407  trained on  1624 
+Duan smearing factor: 5.344111 
+Lognormal factor exp(sigma^2/2): 7.02905 
+Sum of stored median imputations: 237044258 
+Sum if smearing were applied: 1266790757 
+Median upper/lower prediction-interval ratio: 2330.958 
+
+--- Holdout scores, damage in '000 US$ ---
+        disaster_type   n median_ae mean_ae median_ape median_ratio ratio_p10
+1 All held-out events 407    130012  808838     0.8737       0.9458   0.09902
+2             Drought   1     13686   13686     0.1679       0.8321   0.83207
+3 Extreme temperature   3     25938   37851    42.8734      43.8734   9.35166
+4               Flood 194    109781  850228     0.8597       1.1592   0.16210
+5 Mass movement (wet)  10     51255  110709     0.7337       1.3988   0.57746
+6               Storm 181    176839  523430     0.8955       0.7868   0.08756
+7            Wildfire  18    410897 3793202     0.7817       0.6934   0.03350
+  ratio_p90 coverage_95
+1   18.6267      0.9287
+2    0.8321      1.0000
+3  340.3582      0.6667
+4   18.4616      0.9278
+5   26.8637      0.8000
+6   18.5515      0.9392
+7    2.0326      0.9444
+
+--- Recorded vs imputed by disaster type ---
+                disaster_type n_observed median_observed mean_observed
+1                     Drought        122          635725       2267436
+2         Extreme temperature         46          320019       1713143
+3                       Flood       1212          101192        930557
+4 Glacial lake outburst flood          2          374752        374752
+5         Mass movement (wet)         54           34717        147006
+6                       Storm       1444          202863       1785715
+7                    Wildfire        138          240699       1554774
+  p10_observed p90_observed n_imputed median_imputed mean_imputed p10_imputed
+1        14409      5528111        15          52727       105315        3818
+2         1691      3143725       112          84065       479208        8218
+3         2764      1874000      1828          17969        59966        1692
+4       274554       474950         3           6232        38590        4714
+5         2786       314626       272          15834        44797        1678
+6         2804      3094349       721          19080        74642        1890
+7        24457      2919837        65          56298        93181        2508
+  p90_imputed
+1      218825
+2     1015167
+3      144511
+4       85409
+5      111781
+6      204764
+7      185979

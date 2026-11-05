@@ -1,0 +1,22 @@
+{
+  "n_rows": 9129,
+  "n_observed": 3018,
+  "n_imputed": 3016,
+  "n_left_blank": 3095,
+  "n_train": 1624,
+  "n_holdout": 407,
+  "smear": 5.34411071,
+  "lognormal_factor": 7.02905048,
+  "sum_imputed_median": 237044258.01895544,
+  "sum_imputed_smearing": 1266790757.32774639,
+  "median_imputed": 19761.65713526,
+  "median_observed": 155271,
+  "median_interval_ratio": 2330.95794586,
+  "holdout_median_ae": 130012.21769565,
+  "holdout_mean_ae": 808837.76543565,
+  "holdout_median_ape": 0.8737062,
+  "holdout_median_ratio": 0.94581998,
+  "holdout_ratio_p10": 0.09902452,
+  "holdout_ratio_p90": 18.62673119,
+  "holdout_coverage": 0.92874693
+}

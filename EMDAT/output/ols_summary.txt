@@ -1,0 +1,97 @@
+Estimation sample: 2031 of 9129 events
+Missing counts in the full file:
+  Damage   Deaths Affected    GDPpc 
+    6111     2573     1961      146 
+
+--- OLS summary ---
+
+Call:
+lm(formula = log_damage ~ log1p_deaths + log1p_affected + log_gdppc, 
+    data = est)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-8.3405 -1.2281  0.1595  1.3278  7.1243 
+
+Coefficients:
+               Estimate Std. Error t value Pr(>|t|)    
+(Intercept)    -5.12783    0.46578  -11.01   <2e-16 ***
+log1p_deaths    0.66553    0.03470   19.18   <2e-16 ***
+log1p_affected  0.19857    0.01622   12.24   <2e-16 ***
+log_gdppc       1.38921    0.03931   35.34   <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 1.975 on 2027 degrees of freedom
+Multiple R-squared:  0.4174,	Adjusted R-squared:  0.4165 
+F-statistic:   484 on 3 and 2027 DF,  p-value: < 2.2e-16
+
+
+--- HC1 robust coefficient test ---
+
+t test of coefficients:
+
+                Estimate Std. Error t value  Pr(>|t|)    
+(Intercept)    -5.127828   0.515434 -9.9486 < 2.2e-16 ***
+log1p_deaths    0.665531   0.034497 19.2922 < 2.2e-16 ***
+log1p_affected  0.198572   0.017071 11.6324 < 2.2e-16 ***
+log_gdppc       1.389212   0.042504 32.6844 < 2.2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+
+--- 95% CI, classical ---
+                    2.5 %     97.5 %
+(Intercept)    -6.0412758 -4.2143792
+log1p_deaths    0.5974871  0.7335744
+log1p_affected  0.1667691  0.2303748
+log_gdppc       1.3121176  1.4663058
+
+--- 95% CI, HC1 ---
+                    2.5 %     97.5 %
+(Intercept)    -6.1386641 -4.1169909
+log1p_deaths    0.5978766  0.7331850
+log1p_affected  0.1650943  0.2320496
+log_gdppc       1.3058561  1.4725674
+
+--- VIF ---
+  log1p_deaths log1p_affected      log_gdppc 
+      1.446365       1.594220       1.379636 
+
+--- Regressor correlations ---
+               log1p_deaths log1p_affected  log_gdppc
+log1p_deaths      1.0000000      0.5288628 -0.4094656
+log1p_affected    0.5288628      1.0000000 -0.4948302
+log_gdppc        -0.4094656     -0.4948302  1.0000000
+
+--- Breusch-Pagan ---
+
+	studentized Breusch-Pagan test
+
+data:  m
+BP = 75.807, df = 3, p-value = 2.433e-16
+
+
+--- Residuals by disaster type ---
+        disaster_type   n    share mean_resid sd_resid median_resid
+1               Flood 970 0.477597    -0.1173    1.896      0.05813
+2               Storm 904 0.445101     0.1715    2.034      0.32945
+3            Wildfire  91 0.044806     0.2162    1.761      0.15128
+4 Mass movement (wet)  48 0.023634    -0.9630    1.748     -0.84985
+5 Extreme temperature  13 0.006401    -0.9441    3.399      0.36397
+6             Drought   5 0.002462    -0.4837    2.513      0.23545
+
+--- Residuals by fitted decile ---
+   decile   n mean_fitted mean_resid sd_resid
+1       1 204       8.696    0.56952    2.478
+2       2 203       9.998   -0.38191    2.266
+3       3 203      10.657   -0.37330    2.022
+4       4 203      11.180   -0.17709    2.063
+5       5 203      11.629   -0.10441    1.999
+6       6 203      12.032   -0.04262    1.754
+7       7 203      12.413    0.13338    1.783
+8       8 203      12.863    0.14072    1.775
+9       9 203      13.406    0.02808    1.707
+10     10 203      14.606    0.20483    1.558
+
+Cook's distance cutoff 4/n = 0.001969473 ; n above = 98 
