@@ -129,10 +129,18 @@ class IO:
         # io_change_data structure is
         # REG_imp PROD_COMM REG_exp TRAD_COMM Type Value
 
-        # for now ignore type, replace values always
-        # keep other values intact
+        # A policy replacement takes precedence over a relative cost-curve change
+        # on the same cell.
+        cell_columns = ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM']
+        policy_replace_cells = pd.MultiIndex.from_frame(
+            io_change_data.loc[io_change_data['Type'].eq('replace'), cell_columns]
+        )
+        change_cells = pd.MultiIndex.from_frame(io_change_data[cell_columns])
+        is_overridden_relative = (
+            io_change_data['Type'].eq('rel') & change_cells.isin(policy_replace_cells)
+        )
+        io_change_data = io_change_data.loc[~is_overridden_relative]
 
-        # ? consolidate io_change_data
         io_change_data_ = io_change_data.groupby(['REG_imp','PROD_COMM','REG_exp','TRAD_COMM','Type']).agg({'Value':'sum'}).reset_index()
 
         # do impact
