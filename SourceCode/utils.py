@@ -5,6 +5,11 @@ Created on 2024-04-08 13:35:39
 """
 
 import os
+import re
+import sys
+import signal
+import faulthandler
+import shutil
 import pickle
 import glob
 import pandas as pd
@@ -13,9 +18,116 @@ from pathlib import Path
 from datetime import datetime
 from scipy import sparse
 
+
+def atomic_pickle_dump(obj, path):
+    """Pickle to `path` so concurrent readers never see a partially written file."""
+    tmp_path = f"{path}.{os.getpid()}.tmp"
+    with open(tmp_path, 'wb') as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp_path, path)
+
+
+class _Tee:
+    """File-like wrapper that copies everything written to `stream` into `logfile` too."""
+    def __init__(self, stream, logfile):
+        self._stream = stream
+        self._logfile = logfile
+
+    def write(self, data):
+        try:
+            self._logfile.write(data)
+            self._logfile.flush()  # flushed every write so the log survives a crash
+        except (OSError, ValueError):
+            pass  # a broken log must never kill the run
+        try:
+            return self._stream.write(data)
+        except (OSError, ValueError):
+            return len(data)  # terminal gone (e.g. ssh dropped): keep running, the log still has it
+
+    def flush(self):
+        try:
+            self._stream.flush()
+        except (OSError, ValueError):
+            pass
+
+    def __getattr__(self, name):  # isatty, fileno, encoding, ... (pdb, tqdm need them)
+        return getattr(self._stream, name)
+
+
+def start_log_file(path):
+    """Copy stdout and stderr (prints, warnings, uncaught tracebacks) to `path` from now on.
+
+    Stays active until the process exits, so a traceback that escapes the run is logged too.
+    """
+    logfile = open(path, 'a', encoding='utf-8', errors='replace')
+    logfile.write(f"--- log started {datetime.now().isoformat(timespec='seconds')} ---\n")
+    sys.stdout = _Tee(sys.stdout, logfile)
+    sys.stderr = _Tee(sys.stderr, logfile)
+
+    # native crashes (segfault, abort) leave no Python traceback: dump the stack into the log
+    faulthandler.enable(file=logfile)
+
+    # a hangup (ssh dropped) or terminate would otherwise end the process without a trace.
+    # SIGKILL (e.g. the out-of-memory killer) cannot be caught: then the log just stops.
+    def _on_signal(signum, frame):
+        print(f"!!! received signal {signal.Signals(signum).name}: stopping the run", flush=True)
+        raise SystemExit(128 + signum)
+
+    for name in ('SIGHUP', 'SIGTERM'):
+        if hasattr(signal, name):
+            try:
+                signal.signal(getattr(signal, name), _on_signal)
+            except ValueError:  # not in the main thread
+                pass
+
+
+class run_paths:
+    """Per-run directories so several runs can share one checkout concurrently.
+
+    Every run gets an id, `{timestamp}_{scenario_name}[_{suffix}]` unless `run_id` is given
+    (an explicit `run_id` is used as is, `suffix` is ignored), and its own
+    Temp/<id>, Log/<id> and Results/<id> (FTT output goes to Results/<id>/ftt_output). The
+    Results/<id> folder is created with exist_ok=False, which is what claims the id: a clash
+    between two auto-generated ids gets a numeric suffix, an explicit `run_id` that already
+    exists raises instead of overwriting another run's output.
+    """
+    def __init__(self, scenario_name, run_id=None, base=".", suffix=None):
+        explicit = run_id is not None
+        if not explicit:
+            run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{scenario_name}"
+            # the suffix becomes part of a folder name: keep it filesystem-safe
+            suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", suffix.strip()) if suffix else ""
+            if suffix:
+                run_id = f"{run_id}_{suffix}"
+
+        n = 1
+        while True:
+            candidate = run_id if n == 1 else f"{run_id}_{n}"
+            results_dir = os.path.join(base, "Results", candidate)
+            try:
+                os.makedirs(results_dir)
+                break
+            except FileExistsError:
+                if explicit:
+                    raise
+                n += 1
+
+        self.run_id = candidate
+        self.results_dir = results_dir
+        self.temp_dir = os.path.join(base, "Temp", candidate)
+        self.log_dir = os.path.join(base, "Log")
+        self.ftt_dir = os.path.join(results_dir, "ftt_output")
+        os.makedirs(self.temp_dir, exist_ok=True)
+
+
 class temporary_storage:
     def __init__(self, path="Temp"):
         self.PATH = path
+        os.makedirs(self.PATH, exist_ok=True)
+
+    def cleanup(self):
+        """Remove the whole storage folder (used once a run has finished)."""
+        shutil.rmtree(self.PATH, ignore_errors=True)
 
     def save_to_pickle(self, obj, write_name):
         with open(os.path.join(self.PATH, f"{write_name}.pkl"), 'wb') as write_file:
@@ -40,8 +152,8 @@ class temporary_storage:
 
 
 class logging:
-    def __init__(self, path="Log"):
-        self.PATH = os.path.join(path, self.get_time_str())
+    def __init__(self, path="Log", subdir=None):
+        self.PATH = os.path.join(path, subdir if subdir else self.get_time_str())
         # p = Path(self.PATH).resolve()
         # p.mkdir(parents=True, exist_ok=True)
         Path(self.PATH).mkdir(parents=True, exist_ok=True)

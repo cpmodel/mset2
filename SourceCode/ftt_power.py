@@ -136,10 +136,13 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
         scenarios_log['S0']['description'] = "Test Scenario, provided by Cambridge Econometrics"
         scenarios_log['S0']['years'] = [str(x) for x in ftt_model.timeline]
         # Save metadata on current model run
-        with open(Path('.') / 'MINDSET_FTT_Power' / 'Output' / 'Scenarios.json', 'w') as f:
+        # per-run folder (Results/<run_id>/ftt_output) so parallel runs don't overwrite each other
+        output_dir = Path(self.paths.ftt_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with open(output_dir / 'Scenarios.json', 'w') as f:
             json.dump(scenarios_log, f)
 
-        with open(Path('.') / 'MINDSET_FTT_Power' / 'Output' / 'Results.pickle', 'wb') as f:
+        with open(output_dir / 'Results.pickle', 'wb') as f:
             pickle.dump(ftt_model.output, f)
             
     return ftt_model, DYNAMIC

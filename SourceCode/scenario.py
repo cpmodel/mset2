@@ -61,7 +61,7 @@ class scenario:
 
 
     """
-    def __init__(self, EXOG_VARS:exog_vars, scenario_path:str, Log:logging, year:int, years):
+    def __init__(self, EXOG_VARS:exog_vars, scenario_path:str, Log:logging, year:int, years, temp:temporary_storage):
         self.scenario_file = scenario_path
         self.scenario_data = openpyxl.load_workbook(scenario_path, read_only=True)
         # self.name = scenario_name
@@ -77,7 +77,7 @@ class scenario:
         self.regions_length = self.REGIONS.shape[0]
         self.products_length = self.PRODUCTS.shape[0]
 
-        self.temp = temporary_storage("Temp")
+        self.temp = temp
         self.tax_rate = pd.DataFrame()
         self.ee_exog = pd.DataFrame()
 

@@ -16,14 +16,14 @@ from SourceCode.utils import logging
 # we have a basic write and read function
 
 class variables_table:
-    def __init__(self, log_:logging, scenario_name, model_start, model_end):
+    def __init__(self, log_:logging, scenario_name, model_start, model_end, results_path=None):
         self.log = log_
         self.scenario_name = scenario_name
         
         self.PATH = os.getcwd()
         dim_path = os.path.join(self.PATH, "Data", "MSET_data", "Variable_list_MINDSET.xlsx")
         var_path = os.path.join(self.PATH, "variables.xlsx")
-        self.results_path = os.path.join(self.PATH, "Results")
+        self.results_path = results_path if results_path else os.path.join(self.PATH, "Results")
 
         # we build the variables table
         var_data = pd.read_excel(var_path, "vars")
