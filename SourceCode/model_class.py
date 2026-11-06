@@ -236,6 +236,20 @@ class ModelRun:
         # tech_matrix only: exclude TRAD_COMM=93 to avoid a self-referential feedback loop.
         self.ftt_tech_matrix_exclude_own_sector = istruefalse(
             config.get('settings', 'ftt_tech_matrix_exclude_own_sector', fallback='True'))
+        # tech_matrix reads two CEFIO matrices that are generated, not tracked in git (Energy_IO/.gitignore).
+        # Stop here, before any heavy loading, and say how to build them.
+        if self.ftt_run and self.ftt_power_io_mode == 'tech_matrix':
+            _energy_io_dir = Path('Data/MSET_data/Energy_IO')
+            _missing = [f for f in ('A_elec_MSET_FTT_12.csv', 'L_elec_MSET_FTT_12.csv')
+                        if not (_energy_io_dir / f).exists()]
+            if _missing:
+                raise FileNotFoundError(
+                    f"ftt_power_io_mode = tech_matrix needs {', '.join(_missing)} in {_energy_io_dir}, but they are not there. "
+                    "They are generated, not tracked in git, so build them first with\n"
+                    "    python Data/MSET_data/Energy_IO/src/build_energy_io.py\n"
+                    "(it downloads the CEFIO table from figshare if src/2018CEFIO_166.xlsx is missing, and needs "
+                    "Data/GLORIA_db/IND_sparse.pkl, or add --even-split). "
+                    "Alternatively set ftt_power_io_mode = mepd in the .ini.")
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
