@@ -386,7 +386,6 @@ class ModelRun:
 
                 # Assess investment
                 self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
-                # Convert mEUR 2010 to th USD 2019 (MSET investment units)
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
 

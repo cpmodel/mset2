@@ -124,7 +124,7 @@ class ModelRun:
         # Load variable dimensions
         self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims()
 
-        # Retrieve inputs ÔÇö C2TI size must match the CSV files at this point
+        # Retrieve inputs : C2TI size must match the CSV files at this point
         self.input = in_f.load_data(self.titles, self.dims, self.timeline,
                                     self.scenarios, self.ftt_modules,
                                     self.forstart)
@@ -157,7 +157,7 @@ class ModelRun:
 
         # Carbon price coupling state (MSET-coupled mode only).
         # Written by ftt_power.py before each solve_year(); consumed in solve_year().
-        # Shape (n_reg, n_tech, 1) ÔÇö one ctax per (region, technology) in EUR2015/tCO2.
+        # Shape (n_reg, n_tech, 1) : one ctax per (region, technology) in EUR2015/tCO2.
         self._mset_reppx = None
 
         # Fuel price coupling state (MSET-coupled mode only).
@@ -235,7 +235,7 @@ class ModelRun:
                              / np.maximum(_prsc18 * variables['EXX'], 1e-10))
                     variables['CO2taxP'] = (self._mset_reppx * self.carbon_price_conv_factor
                                             / np.where(denom != 0, denom, 1.0))
-                self._mset_reppx = None   # consume ÔÇö must be re-set each year by ftt_power.py
+                self._mset_reppx = None   # consume : must be re-set each year by ftt_power.py
 
             # Overwrite BCET's '22 Gamma' column with MGAM before calling FTT_Standalone.
             if 'MGAM' in variables:
@@ -250,7 +250,7 @@ class ModelRun:
 
             # FPIX is cumulative fuel price index; _fpix_carry persists it. None = standalone (no change).
             fuel_price_index_change = self._mset_fuel_price_index_change if self._mset_fuel_price_index_change is not None else 0.0
-            self._mset_fuel_price_index_change = None   # consume ÔÇö must be re-set each year by ftt_power.py
+            self._mset_fuel_price_index_change = None   # consume : must be re-set each year by ftt_power.py
             if 'FPIX' in variables:
                 fpix_lag = np.where(self._fpix_carry == 0, 1.0, self._fpix_carry)
                 variables['FPIX'] = fpix_lag * (1.0 + fuel_price_index_change)
