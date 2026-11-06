@@ -117,8 +117,7 @@ class run_paths:
         self.temp_dir = os.path.join(base, "Temp", candidate)
         self.log_dir = os.path.join(base, "Log")
         self.ftt_dir = os.path.join(results_dir, "ftt_output")
-        for d in (self.temp_dir, self.ftt_dir):
-            os.makedirs(d, exist_ok=True)
+        os.makedirs(self.temp_dir, exist_ok=True)
 
 
 class temporary_storage:
