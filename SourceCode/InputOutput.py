@@ -129,6 +129,8 @@ class IO:
         # io_change_data structure is
         # REG_imp PROD_COMM REG_exp TRAD_COMM Type Value
 
+        io_change_data = io_change_data.astype({'TRAD_COMM': 'int', 'PROD_COMM': 'int'})
+
         # A policy replacement takes precedence over a relative cost-curve change
         # on the same cell.
         cell_columns = ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM']
@@ -144,7 +146,7 @@ class IO:
         io_change_data_ = io_change_data.groupby(['REG_imp','PROD_COMM','REG_exp','TRAD_COMM','Type']).agg({'Value':'sum'}).reset_index()
 
         # do impact
-        sparse_matrix = sparse_matrix.merge(io_change_data_.astype({'TRAD_COMM':'int','PROD_COMM':'int'}),how='left', on=['REG_exp','TRAD_COMM','REG_imp','PROD_COMM'])
+        sparse_matrix = sparse_matrix.merge(io_change_data_,how='left', on=['REG_exp','TRAD_COMM','REG_imp','PROD_COMM'])
         
         # replace
         sel = (~sparse_matrix['Value'].isna()) & (sparse_matrix['Type']=='replace')
