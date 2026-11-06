@@ -179,6 +179,11 @@ class ModelRun:
         self._mset_fuel_price_index_change = None
         self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI']), 1))
 
+        # FTT:Transport coupling state (MSET-coupled mode only), written by ftt_transport.py
+        # before each solve_year() and consumed there:
+        #   'CO2taxTr': (n_reg,) carbon price in USD/tCO2, or None
+        self._mset_tr = None
+
     def run(self):
         """ Solve model run and save results """
 
@@ -240,6 +245,7 @@ class ModelRun:
 
         # Demand-side modules first, as in FTT_Standalone's own orchestrator.
         if "FTT-Tr" in self.ftt_modules:
+            variables = self._apply_mset_tr_signals(variables, time_lags)
             variables = ftt_tr_solve(variables, time_lags, self.titles, self.histend,
                                      tl[y], self.domain)
 
@@ -286,6 +292,15 @@ class ModelRun:
             print("Incorrect selection of modules. Check settings.ini")
 
         return variables, time_lags
+
+    def _apply_mset_tr_signals(self, variables, time_lags):
+        """Write MSET's carbon price into FTT-Tr's inputs (consumed once)."""
+        sig, self._mset_tr = self._mset_tr, None
+        if not sig:
+            return variables
+        if sig.get('CO2taxTr') is not None:
+            variables['CO2taxTr'][:, 0, 0] = sig['CO2taxTr']
+        return variables
 
     def update(self, year, y, scenario):
         """ Update model variables for a new year of solution """

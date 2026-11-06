@@ -10,12 +10,18 @@ the same code runs with MSET and FTT at equal resolution.
 Hooks, wired in SourceCode/model_class.py (all behind ftt_tr_run = True):
     setup_ftt_transport(mset)             once, at model construction
     solve_year_ftt_transport(mset, ...)   every MSET year, after the FTT:Power step
+
+MSET -> FTT-Tr (before solving):
+    CO2taxTr   household carbon price on the transport fuels, broadcast to FTT regions
 """
 
 import numpy as np
+import pandas as pd
 from pathlib import Path
 
 from MINDSET_FTT_Power.SourceCode.support.ftt_region_map import RegionMap
+
+UTIL = Path('MINDSET_FTT_Power') / 'Utilities'
 
 
 # ------------------------------------------------------------------ setup
@@ -32,6 +38,10 @@ def setup_ftt_transport(mset):
         tr.region_map = RegionMap.identity(ftt_codes, mset_codes)
     else:
         tr.region_map = RegionMap.from_crosswalk(mset.ftt_tr_crosswalk, ftt_codes, mset_codes)
+
+    fuels = pd.read_csv(UTIL / 'ftt_tr_to_mindset_fuels.csv').dropna(subset=['TRAD_COMM'])
+    fuels['TRAD_COMM'] = fuels['TRAD_COMM'].astype(int)
+    tr.carbon_fuel_comm = [c for c in fuels['TRAD_COMM'] if c != 93]   # EVs are carbon-tax exempt
 
     for y, year in enumerate(np.arange(tr.ftt_start, min(mset.years))):
         _solve_and_store(tr, year, y)
@@ -72,4 +82,20 @@ def _report_coverage(tr, year):
 # ------------------------------------------------------------- per-year hook
 def solve_year_ftt_transport(mset, year, DYNAMIC, Scenario):
     tr = mset.ftt_tr_model
+    tr._mset_tr = _mset_to_ftt(mset, tr, year, DYNAMIC, Scenario)
     _solve_and_store(tr, year, year - tr.ftt_start)
+
+
+# ------------------------------------------------------------- MSET -> FTT
+def _mset_to_ftt(mset, tr, year, DYNAMIC, Scenario):
+    rm = tr.region_map
+    sig = {'CO2taxTr': None}
+
+    # Carbon price: household (FD_1) tax rate on the transport fuel commodities, USD/tCO2.
+    tax = Scenario.tax_rate
+    hh = tax.loc[(tax['PROD_COMM'].astype(str) == 'FD_1')
+                 & (pd.to_numeric(tax['TRAD_COMM'], errors='coerce').isin(tr.carbon_fuel_comm))]
+    if len(hh) and (hh['ctax'] != 0).any():
+        by_region = hh.groupby('REG_imp')['ctax'].mean()
+        sig['CO2taxTr'] = rm.broadcast(by_region) * tr.carbon_price_conv_factor
+    return sig
