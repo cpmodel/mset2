@@ -135,18 +135,6 @@ class IO:
         # ? consolidate io_change_data
         io_change_data_ = io_change_data.groupby(['REG_imp','PROD_COMM','REG_exp','TRAD_COMM','Type']).agg({'Value':'sum'}).reset_index()
 
-        cell_keys = ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM']
-        duplicate_changes = io_change_data_.loc[
-            io_change_data_.duplicated(cell_keys, keep=False),
-            cell_keys + ['Type']
-        ].drop_duplicates()
-        if not duplicate_changes.empty:
-            conflicts = duplicate_changes.head(5).to_dict('records')
-            raise ValueError(
-                "IO changes contain multiple change types for the same cell; "
-                f"each cell can have only one Type. Conflicting cells: {conflicts}"
-            )
-
         # do impact
         sparse_matrix = sparse_matrix.merge(io_change_data_.astype({'TRAD_COMM':'int','PROD_COMM':'int'}),how='left', on=['REG_exp','TRAD_COMM','REG_imp','PROD_COMM'])
         

@@ -746,6 +746,7 @@ class scenario:
     # ^ //////////////////////////////////////
     
     def set_io_changes(self):
+        conflicting_changes = None
         try:
             io_changes = pd.read_excel(self.scenario_file, sheet_name="Input-output coefficients", skiprows=14)
             io_changes = io_changes[['Origin country ISO*','Target country ISO*','Origin sector code*','Target sector code*',self.YEAR,'Type*']]
@@ -818,11 +819,25 @@ class scenario:
 
                 del complement_ALL
 
+            cell_keys = ['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM']
+            conflicting_changes = io_changes.loc[
+                io_changes['Value'].notna(), cell_keys + ['Type']
+            ].drop_duplicates()
+            conflicting_changes = conflicting_changes.loc[
+                conflicting_changes.duplicated(cell_keys, keep=False)
+            ].head(5).to_dict('records')
+
             # we might end up with duplicates, the latest assignment is the valid one
             io_changes = io_changes.sort_values(by='line').drop_duplicates(keep='last', subset=['REG_imp','REG_exp','PROD_COMM','TRAD_COMM']).drop(columns=['line'])
                 
         except (ValueError, KeyError):
             io_changes = pd.DataFrame(columns=['REG_imp','PROD_COMM','REG_exp','TRAD_COMM','Type','Value'])
+
+        if conflicting_changes:
+            raise ValueError(
+                "IO scenario input assigns multiple change types to the same cell; "
+                f"each cell can have only one Type. Conflicting cells: {conflicting_changes}"
+            )
         
         self.io_changes = io_changes
 
