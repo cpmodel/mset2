@@ -20,6 +20,7 @@ FTT-Tr -> MSET (after solving):
     TJEF       collapsed live (sum over FTT regions per MSET region); its year-on-year growth
                replaces MSET's own growth for the transport share of household consumption of
                fuels (household_consumption, and energy_flows_fd to stay consistent)
+    TWIY, TEWE, TEWK   collapsed and recorded per year (output csv only, not fed into MSET)
 """
 
 import numpy as np
@@ -27,6 +28,7 @@ import pandas as pd
 from pathlib import Path
 
 from MINDSET_FTT_Power.SourceCode.support.ftt_region_map import RegionMap
+from SourceCode.ftt_power import export_ftt_results
 
 KTOE_TO_TJ = 41.868
 UTIL = Path('MINDSET_FTT_Power') / 'Utilities'
@@ -164,11 +166,23 @@ def _collapse_outputs(tr, year, y):
             'sim_use_prev_tj': rm.collapse_sum(prev * active) * KTOE_TO_TJ,
             'growth': rm.growth(now * active, prev * active),
         }, index=rm.mset_codes)
-    return {'fuel': fuel}                                                    # by commodity
+    n = rm.collapse_sum(np.ones(len(rm.ftt_codes)))
+    return {
+        'fuel': fuel,                                                        # by commodity
+        'TJEF_ktoe': pd.DataFrame(rm.collapse_sum(tjef), index=rm.mset_codes, columns=jti),
+        'TWIY': pd.Series(rm.collapse_sum(out['TWIY'][:, :, 0, y].sum(axis=1)), index=rm.mset_codes),
+        'TEWE_Mt': pd.Series(rm.collapse_sum(out['TEWE'][:, :, 0, y].sum(axis=1)), index=rm.mset_codes),
+        'TEWK_kveh': pd.Series(rm.collapse_sum(out['TEWK'][:, :, 0, y].sum(axis=1)), index=rm.mset_codes),
+        'active_share': pd.Series(rm.collapse_sum(active) / n, index=rm.mset_codes),
+    }
 
 
 def apply_household_consumption(mset, year, hh_cons):
-    return _adjust_household_consumption(mset, year, hh_cons)
+    out = _adjust_household_consumption(mset, year, hh_cons)
+    if mset.ftt_tr_model is not None and year == mset.model_end:
+        _write_collapsed(mset.ftt_tr_model)      # after rho is recorded in the signals
+        _write_results(mset.ftt_tr_model)
+    return out
 
 
 def _adjust_household_consumption(mset, year, hh_cons):
@@ -224,3 +238,28 @@ def _adjust_household_consumption(mset, year, hh_cons):
     ef['fuel_use'] = ef['fuel_use'] * ef_factor
     mset.V.write_var_df('energy_flows_fd', year, ef)
     return out
+
+
+def _write_collapsed(tr):
+    rows = []
+    for year, s in tr.signals.items():
+        for reg in tr.region_map.mset_codes:
+            rows.append({'year': year, 'REG': reg, 'variable': 'TWIY', 'item': '', 'value': s['TWIY'][reg]})
+            rows.append({'year': year, 'REG': reg, 'variable': 'TEWE_Mt', 'item': '', 'value': s['TEWE_Mt'][reg]})
+            rows.append({'year': year, 'REG': reg, 'variable': 'TEWK_kveh', 'item': '', 'value': s['TEWK_kveh'][reg]})
+            rows.append({'year': year, 'REG': reg, 'variable': 'active_share', 'item': '', 'value': s['active_share'][reg]})
+            for jti, v in s['TJEF_ktoe'].loc[reg].items():
+                rows.append({'year': year, 'REG': reg, 'variable': 'TJEF_ktoe', 'item': jti, 'value': v})
+            for comm, f in s['fuel'].items():
+                for col in f.columns:
+                    rows.append({'year': year, 'REG': reg, 'variable': f'fuel_{col}', 'item': comm,
+                                 'value': f.loc[reg, col]})
+    out_dir = Path('MINDSET_FTT_Power') / 'Output'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(out_dir / 'ftt_tr_collapsed.csv', index=False)
+
+
+def _write_results(tr):
+    """Scenarios.json and Results.pickle, written by the same function as for FTT:Power. Own
+    folder, so the FTT:Power files are not overwritten when both runs are on."""
+    export_ftt_results(tr, Path('MINDSET_FTT_Power') / 'Output' / 'FTT_Tr')
