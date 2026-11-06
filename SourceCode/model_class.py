@@ -235,7 +235,7 @@ class ModelRun:
         self.COND_PRICE = int(config.get('settings','COND_PRICE')) / 100
         self.ITER_MAX = int(config.get('settings','ITER_MAX'))
 
-        self.WRITE_AT_END = bool(config.get('settings', 'WRITE_AT_END'))
+        self.WRITE_AT_END = config.getboolean('settings', 'WRITE_AT_END')
 
         # Parallel-run support (all optional). Each run writes into Temp/<run_id>, Log/<run_id>
         # and Results/<run_id>, run_id = {timestamp}_{scenario_name}[_{suffix}] unless `run_id` is set.
@@ -243,10 +243,10 @@ class ModelRun:
         # debug_iter_csv: dump per-iteration diagnostics to Temp/<run_id>/iter{year}-{iter}.csv.
         # residuals_dir: shared by design (a CALIBRATING run feeds later runs); point
         #   concurrent calibration runs at different folders.
-        self.keep_temp = istruefalse(config.get('settings', 'keep_temp', fallback='False'))
-        self.debug_iter_csv = istruefalse(config.get('settings', 'debug_iter_csv', fallback='False'))
+        self.keep_temp = config.getboolean('settings', 'keep_temp', fallback=False)
+        self.debug_iter_csv = config.getboolean('settings', 'debug_iter_csv', fallback=False)
         # write_log: copy console output (incl. warnings and tracebacks) to Results/<run_id>/run.log as it happens.
-        self.write_log = istruefalse(config.get('settings', 'write_log', fallback='False'))
+        self.write_log = config.getboolean('settings', 'write_log', fallback=False)
         self.residuals_dir = config.get('settings', 'residuals_dir', fallback='Residuals')
         os.makedirs(self.residuals_dir, exist_ok=True)
 
