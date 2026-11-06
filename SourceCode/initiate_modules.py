@@ -400,7 +400,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     flow_price_impact_hh.loc[flow_price_impact_hh['flow_price_impact_hh']> 5, 'flow_price_impact_hh'] = 5.0
 
     self.V.write_var('flow_price_impact_intermediates', year, flow_price_impact_intermediates, from_df=True)
-    self.V.write_var('flow_price_impact_hh', year, flow_price_impact_hh, from_df=True)
+    self.V.write_var('flow_price_impact_hh', year, flow_price_impact_hh.rename(columns={'PROD_COMM': 'FD'}), from_df=True)
 
     BTA_cou = BTA(Scenario, self.bta, EXOG_VARS.R, self.temp, EXOG_VARS)
     if year > self.model_start:
@@ -409,7 +409,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         cbam_incidence = BTA_cou.calc_cbam_incidence(EXOG_VARS.IND_BASE, DYNAMIC['carbon_content'], EXOG_VARS.HH_BASE, EXOG_VARS.FCF_BASE, EXOG_VARS.GOV_BASE)
     # cbam incidence ['REG_imp','REG_exp','PROD_COMM','TRAD_COMM','cbam_cost']
     cbam_cost_dfs = {
-        'intermediates': cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy(),
+        'intermediates': cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy().astype({'PROD_COMM': int, 'TRAD_COMM': int}),
         'hh':            cbam_incidence[cbam_incidence['PROD_COMM']=="FD_1"].copy(),
         'fcf':           cbam_incidence[cbam_incidence['PROD_COMM']=="FD_4"].copy(),
         'gov':           cbam_incidence[cbam_incidence['PROD_COMM']=="FD_3"].copy(),
@@ -671,8 +671,6 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     
     dev_profit_rate_L1[abs(dev_profit_rate_L1)==np.inf] = 0.0
     dev_profit_rate_L1[abs(dev_profit_rate_L1)>10] = 0.0
-    if len(dev_profit_rate_L1[abs(dev_profit_rate_L1)>10]) > 0:
-        print(f"profit rate issues (>10) sectors: {", ".join(map(str, np.where(dyn_qbase < 0)[0]))}")
     v_dev_profit_rate = Price_model.dp_profit_rate(dev_profit_rate_L1)
     dp_dev_profit_rate = Price_model.second_order_dprice(v_dev_profit_rate, year=year)['dp_full']
     
@@ -1033,7 +1031,8 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
 
     # Remove electricity investment from lagged investment so there is no double counting
     if self.ftt_run:
-        elec_idx = 92 * np.array(range(0, len(INV_model.R_list)))
+        n_sectors = len(INV_model.P_list)  # 120
+        elec_idx = np.arange(92, len(INV_model.R_list) * n_sectors, n_sectors)
         DYNAMIC['dy_inv_induced_L1'][elec_idx] = 0
     dq_inv_induced, dq_inv_recyc, dq_inv_exog = IO_model.calc_dq_inv(DYNAMIC['dy_inv_induced_L1'], dy_inv_recyc, dy_inv_exog)
     self.V.write_var("dq_inv_exog", year, dq_inv_exog)
@@ -1220,6 +1219,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     dtax_rev, dlabor_nat = None, None
     A_trade_old = None
     cost_curves_impact_old = None
+    dempl_labour_supply_constraint = np.zeros_like(dempl_total)
     # these are the thereshold values for convergence
     # labor_diff, tax_diff = 0.05, 0.05
     # A_trade_diff = 0.05
@@ -1231,9 +1231,9 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     while self.SWITCH_WITHIN_YEAR_LOOP:
         iter_time = time.time()
 
-        #region 2.2.15.1_Adjust_labour_income [rgba(26,188,156,0.15)] 
-        #region desc [rgba(26,188,156,0.50)] 
-        # ^w    [2.2.15.1] Labour income adjustment 
+        #region 2.2.15.1_Adjust_labour_income [rgba(26,188,156,0.15)]
+        #region desc [rgba(26,188,156,0.50)]
+        # ^w    [2.2.15.1] Labour income adjustment
         # ^w        calculate delta tax revenue and take dempl_total, calculate new labour compensation based on those
         #endregion
         A_old = A_trade
@@ -1250,22 +1250,22 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
             cost_curves_impact_old = cost_curves_impact[['REG_imp','PROD_COMM','input_cost_change']].copy()
             cost_curves_impact_old = cost_curves_impact_old.rename(columns={'input_cost_change':'input_cost_change_old'})
 
-        dempl_labour_supply_constraint = np.zeros_like(dempl_total)
-
         # ? calculate new emission cost based on new trade and new output
         Energy_emissions.update_ind_base(A_trade, self.V.read_var("output", year-1) + self.V.read_var("dq_total", year))
         tax_incidence = Energy_emissions.calculate_tax_incidence()
         self.V.write_var_df('emission_cost_intermediates', year, tax_incidence['tax_incidence_intermediates'])
-        self.V.write_var_df('emission_cost_hh', year, tax_incidence['tax_incidence_hh'])
-        self.V.write_var_df('emission_cost_fcf', year, tax_incidence['tax_incidence_fcf'])
-        self.V.write_var_df('emission_cost_gov', year, tax_incidence['tax_incidence_gov'])
+        self.V.write_var_df('emission_cost_hh',  year, tax_incidence['tax_incidence_hh'].rename(columns={'PROD_COMM': 'FD'}))
+        self.V.write_var_df('emission_cost_fcf', year, tax_incidence['tax_incidence_fcf'].rename(columns={'PROD_COMM': 'FD'}))
+        self.V.write_var_df('emission_cost_gov', year, tax_incidence['tax_incidence_gov'].rename(columns={'PROD_COMM': 'FD'}))
 
         cbam_incidence = BTA_cou.calc_cbam_incidence(ind_ener_glo, DYNAMIC['carbon_content'], EXOG_VARS.HH_BASE, EXOG_VARS.FCF_BASE, EXOG_VARS.GOV_BASE)
         # cbam incidence ['REG_imp','REG_exp','PROD_COMM','TRAD_COMM','cbam_cost']
-        self.V.write_var_df('cbam_cost_intermediates', year, cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy())
-        self.V.write_var_df('cbam_cost_hh', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_1"].copy())
-        self.V.write_var_df('cbam_cost_fcf', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_4"].copy())
-        self.V.write_var_df('cbam_cost_gov', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_3"].copy())
+        _cbam_interm = cbam_incidence[~cbam_incidence['PROD_COMM'].str.contains("FD")].copy()
+        _cbam_interm = _cbam_interm.astype({'PROD_COMM': int, 'TRAD_COMM': int})
+        self.V.write_var_df('cbam_cost_intermediates', year, _cbam_interm)
+        self.V.write_var_df('cbam_cost_hh',  year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_1"].rename(columns={'PROD_COMM':'FD'}))
+        self.V.write_var_df('cbam_cost_fcf', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_4"].rename(columns={'PROD_COMM':'FD'}))
+        self.V.write_var_df('cbam_cost_gov', year, cbam_incidence[cbam_incidence['PROD_COMM']=="FD_3"].rename(columns={'PROD_COMM':'FD'}))
 
         # calculate within iteration delta of collected tax revenues
         dtax_rev = Tax_rev.calc_tax_iter_cond(emission_cost_old, self.V.read_var_df('emission_cost_intermediates', year))
@@ -1546,16 +1546,16 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         dy_trade_hh = fd_trade_response['dy']['dy_trade_hh']
         dy_trade_fcf = fd_trade_response['dy']['dy_trade_fcf']
         dy_trade_gov = fd_trade_response['dy']['dy_trade_gov']
-        
+
         # Build new A matrix due to trade (import) substitution
-        
+
         # add scenario based changes
         # ind_trade = IO_model.io_change(io_changes, ind_trade)
         A_trade = IO_model.build_A_matrix(input_df=ind_trade, variable='IO_coef_trade')
         IO_model.update_Leontieff(A_trade)
         dq_trade_eff = IO_model.calc_dq_trade((dq_tech_eff))
         self.V.write_var("dq_trade_eff", year, dq_trade_eff)
-        
+
         Price_model.update_A_BASE(A_trade)
         Price_model.calc_positive_and_negative_L()
 
@@ -1630,7 +1630,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
 
         ind_ener_iter = IO_model.io_change(io_changes_, ind_trade)
         # ind_trade = ind_ener_iter
-        
+
         # ! SET IO
         A_iochange = IO_model.build_A_matrix(input_df=ind_ener_iter, variable='IO_coef_trade')
         fd_vec_tmp = IO_model.calc_fd_vec(dq_total+IO_model.q_base_curr)
@@ -1813,8 +1813,8 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         print(f"--- 2.2.15 Price change relative diff.: {round(price_cond * 100, 4)}% ---")
         print(f"--- 2.2.15 Labour constraint diff.: {round(labor_constraint_cond * 100, 4)}% ---")
         print(f"--- 2.2.15 MRIO matrix relative diff.: {round(np.max(np.abs(np.nan_to_num(A_old - A_trade, nan=0))) * 100, 4)}pp ---")
-        
-        if ((labor_cond < self.COND_LABOR and tax_rev_cond < self.COND_TAX and price_cond < self.COND_PRICE and 
+
+        if ((labor_cond < self.COND_LABOR and tax_rev_cond < self.COND_TAX and price_cond < self.COND_PRICE and
             np.allclose(A_old, A_trade, atol=self.COND_TRADE)) or (iter_run > self.ITER_MAX)):
             break
         
