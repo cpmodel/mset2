@@ -182,6 +182,7 @@ class ModelRun:
         # FTT:Transport coupling state (MSET-coupled mode only), written by ftt_transport.py
         # before each solve_year() and consumed there:
         #   'CO2taxTr': (n_reg,) carbon price in USD/tCO2, or None
+        #   'fuel_price_index': {'PFRM'|'PFRG'|'PFRE'|'PFRB': (n_reg,) cumulative index}
         self._mset_tr = None
 
     def run(self):
@@ -294,12 +295,19 @@ class ModelRun:
         return variables, time_lags
 
     def _apply_mset_tr_signals(self, variables, time_lags):
-        """Write MSET's carbon price into FTT-Tr's inputs (consumed once)."""
+        """Write MSET's carbon price and fuel-price index into FTT-Tr's inputs (consumed once).
+
+        FTT-Tr takes its fuel prices from time_lag['PFRx'] (ftt_tr_main.py: TE3P), so the price
+        index scales that array; the carbon price is read from the current year.
+        """
         sig, self._mset_tr = self._mset_tr, None
         if not sig:
             return variables
         if sig.get('CO2taxTr') is not None:
             variables['CO2taxTr'][:, 0, 0] = sig['CO2taxTr']
+        road = self.titles['FUTI'].index('16 Road transport')
+        for var, index in sig.get('fuel_price_index', {}).items():
+            time_lags[var][:, road, 0] = time_lags[var][:, road, 0] * index
         return variables
 
     def update(self, year, y, scenario):

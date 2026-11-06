@@ -13,6 +13,8 @@ Hooks, wired in SourceCode/model_class.py (all behind ftt_tr_run = True):
 
 MSET -> FTT-Tr (before solving):
     CO2taxTr   household carbon price on the transport fuels, broadcast to FTT regions
+    PFRM/PFRE  cumulative household fuel-price index (year-on-year, like FPIX for Power),
+               broadcast to FTT regions, applied to FTT-Tr's own E3ME fuel prices
 """
 
 import numpy as np
@@ -41,7 +43,12 @@ def setup_ftt_transport(mset):
 
     fuels = pd.read_csv(UTIL / 'ftt_tr_to_mindset_fuels.csv').dropna(subset=['TRAD_COMM'])
     fuels['TRAD_COMM'] = fuels['TRAD_COMM'].astype(int)
-    tr.carbon_fuel_comm = [c for c in fuels['TRAD_COMM'] if c != 93]   # EVs are carbon-tax exempt
+    tr.carbon_fuel_comm = [c for c in fuels['TRAD_COMM'] if c != 93]   # carbon price = household rate on liquid fuels
+
+    prices = pd.read_csv(UTIL / 'ftt_tr_fuel_price_mapping.csv').dropna(subset=['TRAD_COMM'])
+    prices['TRAD_COMM'] = prices['TRAD_COMM'].astype(int)
+    tr.price_map = prices                                  # PFRx -> MSET commodity
+    tr.price_index = {v: np.ones(len(ftt_codes)) for v in prices['PFR_var']}
 
     for y, year in enumerate(np.arange(tr.ftt_start, min(mset.years))):
         _solve_and_store(tr, year, y)
@@ -89,7 +96,7 @@ def solve_year_ftt_transport(mset, year, DYNAMIC, Scenario):
 # ------------------------------------------------------------- MSET -> FTT
 def _mset_to_ftt(mset, tr, year, DYNAMIC, Scenario):
     rm = tr.region_map
-    sig = {'CO2taxTr': None}
+    sig = {'CO2taxTr': None, 'fuel_price_index': {}}
 
     # Carbon price: household (FD_1) tax rate on the transport fuel commodities, USD/tCO2.
     tax = Scenario.tax_rate
@@ -98,4 +105,29 @@ def _mset_to_ftt(mset, tr, year, DYNAMIC, Scenario):
     if len(hh) and (hh['ctax'] != 0).any():
         by_region = hh.groupby('REG_imp')['ctax'].mean()
         sig['CO2taxTr'] = rm.broadcast(by_region) * tr.carbon_price_conv_factor
+
+    # Fuel-price index: cumulative product of MSET's year-on-year commodity price change, kept
+    # per FTT region and applied to FTT-Tr's own E3ME fuel prices (as FPIX is for Power).
+    if year > mset.model_start:
+        dp_all = mset.V.read_var('delta_price_yoy', year, as_df=True).rename(
+            columns={'delta_price_yoy': 'dp'})
+        hh_cons = mset.V.read_var('household_consumption', year - 1, as_df=True)
+        for _, row in tr.price_map.iterrows():
+            var, comm = row['PFR_var'], int(row['TRAD_COMM'])
+            sig['fuel_price_index'][var] = tr.price_index[var].copy()
+            dp = _household_price_change(dp_all, hh_cons, comm)
+            tr.price_index[var] = tr.price_index[var] * (1.0 + rm.broadcast(dp))
     return sig
+
+
+def _household_price_change(dp_all, hh_cons, comm):
+    """Year-on-year price change of commodity `comm` faced by households of each MSET region,
+    weighting the supplying regions by last year's household purchases."""
+    dp = dp_all.loc[pd.to_numeric(dp_all['PROD_COMM'], errors='coerce') == comm, ['REG_imp', 'dp']].rename(
+        columns={'REG_imp': 'REG_exp'})
+    w = hh_cons.loc[pd.to_numeric(hh_cons['TRAD_COMM'], errors='coerce') == comm,
+                    ['REG_imp', 'REG_exp', 'household_consumption']]
+    w = w.merge(dp, on='REG_exp', how='left').fillna({'dp': 0.0})
+    w['num'] = w['household_consumption'] * w['dp']
+    g = w.groupby('REG_imp')[['num', 'household_consumption']].sum()
+    return (g['num'] / g['household_consumption'].where(g['household_consumption'] != 0)).fillna(0.0)
