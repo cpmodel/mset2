@@ -203,7 +203,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
 
         # FTT-driven labour-intensity growth signal for PROD_COMM=93, composed into
         # MSET's employment growth rate next year. tech_matrix mode only.
-        _empl_coupling = getattr(ftt_model, 'ftt_employment_coupling', False)
+        _empl_coupling = ftt_model.ftt_employment_coupling
         _l_elec = getattr(ftt_model, 'ftt_labour_intensity', None)
         if y == 1 or not _empl_coupling or _l_elec is None:
             ftt_model._mset_pending_employment_impact = None

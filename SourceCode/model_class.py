@@ -404,13 +404,15 @@ class ModelRun:
                 _a_elec = pd.read_csv(
                     'Data/MSET_data/Energy_IO/A_elec_MSET_FTT_12.csv', index_col=0
                 )
-                assert set(_a_elec.columns) == set(_t2ti_list),                     "Energy_IO A_elec technologies do not match FTT's T2TI titles"
+                assert set(_a_elec.columns) == set(_t2ti_list), \
+                    "Energy_IO A_elec technologies do not match FTT's T2TI titles"
                 self.ftt_model.ftt_cefio_a_elec = _a_elec.reindex(columns=_t2ti_list).fillna(0.0)
 
                 _l_elec = pd.read_csv(
                     'Data/MSET_data/Energy_IO/L_elec_MSET_FTT_12.csv', index_col=0
                 )
-                assert set(_t2ti_list) <= set(_l_elec.index),                     "Energy_IO L_elec lacks technologies of FTT's T2TI titles"
+                assert set(_t2ti_list) <= set(_l_elec.index), \
+                    "Energy_IO L_elec lacks technologies of FTT's T2TI titles"
                 self.ftt_model.ftt_labour_intensity = (
                     _l_elec.reindex(_t2ti_list)['labour_intensity'].fillna(0.0)
                 )

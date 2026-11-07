@@ -383,7 +383,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         if ftt_model is not None:
             io_impact = io_impact.astype({'REG_imp': 'str', 'TRAD_COMM': 'int'})
             io_impact = io_impact[io_impact['PROD_COMM'].astype(int) != 93]
-            _ftt_impact = getattr(ftt_model, '_mset_pending_fuel_io_impact', None)
+            _ftt_impact = ftt_model._mset_pending_fuel_io_impact
             if _ftt_impact is not None and not _ftt_impact.empty:
                 _ind = Energy_emissions.IND_BASE
                 # dtypes drift between str/int/categorical across this codebase's DataFrames.
@@ -1115,7 +1115,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         # empl_new = MRIO_vec_to_df_DEF(Empl_model.recalc_empl_base(IO_model.q_base), 'vol_total')
         # empl_new = empl_new.merge(Prod_cost.empl_base.rename(columns={'vol_total':'vol_base'}), how='left', on=['REG_imp','PROD_COMM'])
         # FTT's electricity-sector labour-intensity growth signal, stored by ftt_power.py.
-        _ftt_empl_impact = getattr(ftt_model, '_mset_pending_employment_impact', None) if ftt_model is not None else None
+        _ftt_empl_impact = ftt_model._mset_pending_employment_impact if ftt_model is not None else None
         empl_new = Empl_model.recalc_empl_base_NEW(ftt_employment_impact=_ftt_empl_impact)
         dempl_productivity = empl_new['d_employment']
         # ! this has an effect on compensation!!! 
