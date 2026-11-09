@@ -45,6 +45,20 @@ def ftt_investment_by_mrio_sector(ftt_model, y):
     return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
             investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
 
+def export_ftt_results(ftt_model, output_dir):
+    """Write the run's metadata (Scenarios.json) and full output (Results.pickle) to output_dir."""
+    scenarios_log = {}
+    scenarios_log['S0'] = {}
+    scenarios_log['S0']['run'] = datetime.datetime.timestamp(datetime.datetime.now())
+    scenarios_log['S0']['description'] = "Test Scenario, provided by Cambridge Econometrics"
+    scenarios_log['S0']['years'] = [str(x) for x in ftt_model.timeline]
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_dir / 'Scenarios.json', 'w') as f:
+        json.dump(scenarios_log, f)
+    with open(output_dir / 'Results.pickle', 'wb') as f:
+        pickle.dump(ftt_model.output, f)
+
 def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model, model_start, model_end):
     
     ## FTT: Power
@@ -197,19 +211,6 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, IO_model
 
     # Export results in the last year
     if year == model_end:
-        # Update scenario log
-        scenarios_log = {}
-        scenarios_log['S0'] = {}
-        scenarios_log['S0']['run'] = datetime.datetime.timestamp(datetime.datetime.now())
-        scenarios_log['S0']['description'] = "Test Scenario, provided by Cambridge Econometrics"
-        scenarios_log['S0']['years'] = [str(x) for x in ftt_model.timeline]
-        # Save metadata on current model run
-        output_dir = Path('.') / 'MINDSET_FTT_Power' / 'Output'
-        output_dir.mkdir(parents=True, exist_ok=True)
-        with open(output_dir / 'Scenarios.json', 'w') as f:
-            json.dump(scenarios_log, f)
+        export_ftt_results(ftt_model, Path('.') / 'MINDSET_FTT_Power' / 'Output')
 
-        with open(output_dir / 'Results.pickle', 'wb') as f:
-            pickle.dump(ftt_model.output, f)
-            
     return ftt_model, DYNAMIC

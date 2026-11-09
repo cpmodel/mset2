@@ -21,6 +21,7 @@ from tqdm import tqdm
 
 from ftt_source.paths import set_paths
 from ftt_source.Power.ftt_p_main import solve as ftt_p_solve, build_power_settings
+from ftt_source.Transport.ftt_tr_main import solve as ftt_tr_solve
 
 # Support modules
 import MINDSET_FTT_Power.SourceCode.support.input_functions as in_f
@@ -86,12 +87,17 @@ class ModelRun:
 
     """
 
-    def __init__(self):
-        """ Instantiate model run object """
+    def __init__(self, settings_path=None):
+        """ Instantiate model run object
+
+        settings_path: alternative settings file (e.g. a Transport-only run at native 71
+        regions). Its optional `data_root` key points at a folder holding its own
+        Inputs/ and Utilities/titles/; without it the run uses MINDSET_FTT_Power itself.
+        """
 
         # Attributes given in settings.ini file
         _mindset_root = Path(__file__).parents[1]
-        _settings_ini = str(_mindset_root / 'settings.ini')
+        _settings_ini = str(settings_path) if settings_path else str(_mindset_root / 'settings.ini')
         config = configparser.ConfigParser()
         config.read(_settings_ini)
         self.name = config.get('settings', 'name')
@@ -105,8 +111,14 @@ class ModelRun:
         self.ftt_modules = config.get('settings', 'enable_modules')
         self.scenarios = config.get('settings', 'scenarios')
 
-        # Point FTT_Standalone at MINDSET's Utilities and settings (once at startup)
-        set_paths(utilities_path=str(_mindset_root / 'Utilities'))
+        # Point FTT_Standalone at this run's Utilities and settings. ftt_source.paths is global,
+        # so solve_year() re-applies it when several runs (e.g. Power at 10 regions, Transport
+        # at 71) coexist.
+        self.data_root = config.get('settings', 'data_root', fallback=None)
+        _data_root = self.data_root or 'MINDSET_FTT_Power'
+        self._utilities_path = (str(Path(self.data_root) / 'Utilities') if self.data_root
+                                else str(_mindset_root / 'Utilities'))
+        set_paths(utilities_path=self._utilities_path)
         self.ftt_settings_path = _settings_ini
         self.carbon_price_conv_factor = float(
             config.get('settings', 'carbon_price_conv_factor', fallback='1.3281'))
@@ -116,24 +128,25 @@ class ModelRun:
         self._ex_var      = f"EX{str(_ex_base_year)[2:]}"     # e.g. "EX18"
 
         # Load classification titles
-        self.titles = titles_f.load_titles()
-        self.power_settings = build_power_settings(self.titles, config)
+        self.titles = titles_f.load_titles(self.data_root)
+        self.power_settings = (build_power_settings(self.titles, config)
+                               if "FTT-P" in self.ftt_modules else None)
 
         # Load variable dimensions
-        self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims()
+        self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims(_data_root)
 
         # Retrieve inputs : C2TI size must match the CSV files at this point
         self.input = in_f.load_data(self.titles, self.dims, self.timeline,
                                     self.scenarios, self.ftt_modules,
-                                    self.forstart)
+                                    self.forstart, data_root=_data_root)
 
         # After loading, extend BCET and C2TI so FTT_Standalone's ftt_p_lcoe can find
         # '22 Gamma' (index 21) and '23 Value factor' (index 22) by name.
         # The CSV data ends at '21 Gamma ($/MWh)' (index 20); we copy it to column 21
         # and default Value factor to 1.0 for all technologies.
         c2ti_list = list(self.titles['C2TI'])
-        gamma_col = c2ti_list.index('21 Gamma ($/MWh)')  # index 20
-        new_entries = [e for e in ('22 Gamma', '23 Value factor') if e not in c2ti_list]
+        gamma_col = c2ti_list.index('21 Gamma ($/MWh)') if '21 Gamma ($/MWh)' in c2ti_list else None  # index 20
+        new_entries = [e for e in ('22 Gamma', '23 Value factor') if e not in c2ti_list] if gamma_col is not None else []
         if new_entries:
             n_extra = len(new_entries)
             for scen in self.input:
@@ -163,6 +176,12 @@ class ModelRun:
         # _fpix_carry accumulates the cumulative price index across years.
         self._mset_fuel_price_index_change = None
         self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI']), 1))
+
+        # FTT:Transport coupling state (MSET-coupled mode only), written by ftt_transport.py
+        # before each solve_year() and consumed there:
+        #   'CO2taxTr': (n_reg,) carbon price in USD/tCO2, or None
+        #   'fuel_price_index': {'PFRM'|'PFRG'|'PFRE'|'PFRB': (n_reg,) cumulative index}
+        self._mset_tr = None
 
     def run(self):
         """ Solve model run and save results """
@@ -219,7 +238,15 @@ class ModelRun:
         tl = self.timeline
 
         # define modules list in for possible setting.ini selection
-        modules_list = ["FTT-P"]
+        modules_list = ["FTT-P", "FTT-Tr"]
+
+        set_paths(utilities_path=self._utilities_path)
+
+        # Demand-side modules first, as in FTT_Standalone's own orchestrator.
+        if "FTT-Tr" in self.ftt_modules:
+            variables = self._apply_mset_tr_signals(variables, time_lags)
+            variables = ftt_tr_solve(variables, time_lags, self.titles, self.histend,
+                                     tl[y], self.domain)
 
         if "FTT-P" in self.ftt_modules:
 
@@ -264,6 +291,22 @@ class ModelRun:
             print("Incorrect selection of modules. Check settings.ini")
 
         return variables, time_lags
+
+    def _apply_mset_tr_signals(self, variables, time_lags):
+        """Write MSET's carbon price and fuel-price index into FTT-Tr's inputs (consumed once).
+
+        FTT-Tr takes its fuel prices from time_lag['PFRx'] (ftt_tr_main.py: TE3P), so the price
+        index scales that array; the carbon price is read from the current year.
+        """
+        sig, self._mset_tr = self._mset_tr, None
+        if not sig:
+            return variables
+        if sig.get('CO2taxTr') is not None:
+            variables['CO2taxTr'][:, 0, 0] = sig['CO2taxTr']
+        road = self.titles['FUTI'].index('16 Road transport')
+        for var, index in sig.get('fuel_price_index', {}).items():
+            time_lags[var][:, road, 0] = time_lags[var][:, road, 0] * index
+        return variables
 
     def update(self, year, y, scenario):
         """ Update model variables for a new year of solution """

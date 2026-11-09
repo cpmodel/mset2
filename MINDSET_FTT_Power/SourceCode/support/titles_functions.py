@@ -18,11 +18,13 @@ import os
 from pathlib import Path
 import pandas as pd
 
-def load_titles():
-    dir_file = os.path.dirname(os.path.realpath(__file__))
-    dir_root = Path(dir_file).parents[1]
+def load_titles(data_root=None):
+    """data_root: folder holding Utilities/titles; defaults to MINDSET_FTT_Power itself."""
+    if data_root is None:
+        dir_file = os.path.dirname(os.path.realpath(__file__))
+        data_root = Path(dir_file).parents[1]
 
-    titles_path = dir_root / 'Utilities' / 'titles' / 'classification_titles.csv'
+    titles_path = Path(data_root) / 'Utilities' / 'titles' / 'classification_titles.csv'
     if not titles_path.is_file():
         raise FileNotFoundError(f"Classification titles file not found at: {titles_path}")
 

@@ -227,6 +227,13 @@ class ModelRun:
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = istruefalse(config.get('settings', 'CALIBRATING'))
         self.ftt_run = istruefalse(config.get('settings', 'ftt_run'))
+        # FTT:Transport, run at its own regions and coupled through a live region map
+        # (SourceCode/ftt_transport.py). All optional; off by default.
+        self.ftt_tr_run = istruefalse(config.get('settings', 'ftt_tr_run', fallback='False'))
+        self.ftt_tr_settings = config.get('settings', 'ftt_tr_settings', fallback='MINDSET_FTT_Power/settings_transport.ini')
+        self.ftt_tr_region_mode = config.get('settings', 'ftt_tr_region_mode', fallback='crosswalk')  # crosswalk | identity
+        self.ftt_tr_crosswalk = config.get('settings', 'ftt_tr_crosswalk', fallback='MINDSET_FTT_Power/Utilities/ftt71_to_ipcc10_crosswalk.csv')
+        self.ftt_tr_couple_household_energy = istruefalse(config.get('settings', 'ftt_tr_couple_household_energy', fallback='True'))
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
@@ -237,6 +244,7 @@ class ModelRun:
         self.WRITE_AT_END = bool(config.get('settings', 'WRITE_AT_END'))
         
         self.ftt_model = None
+        self.ftt_tr_model = None
 
         # TODO move it from here
         self.cost_curve_employment = [24,25,26]
@@ -388,6 +396,12 @@ class ModelRun:
                 self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
+        # Setup FTT:Transport (own FTT run; solves the years before MSET starts)
+        if self.ftt_tr_run:
+            from SourceCode.ftt_transport import setup_ftt_transport, solve_year_ftt_transport, apply_household_consumption
+            self._solve_year_ftt_tr = solve_year_ftt_transport
+            self._apply_ftt_tr_hh = apply_household_consumption
+            setup_ftt_transport(self)
 
         #%%
         
@@ -1072,6 +1086,10 @@ class ModelRun:
             ## FTT: Power
             ftt_model, DYNAMIC = self._solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
                                                                ener_base, IO_model, self.model_start, self.model_end)
+
+        if self.ftt_tr_run:
+            ## FTT: Transport (own FTT run; its effect on households is applied later, on household_consumption)
+            self._solve_year_ftt_tr(self, year, DYNAMIC, Scenario)
                 
         ## EMISSIONS
     
@@ -1229,6 +1247,9 @@ class ModelRun:
         
         # ! NO NEGATIVE VALUES
         dyn_hh_cons['VIPA'] = dyn_hh_cons['VIPA'].apply(lambda x: x if x > 0.0 else 0.0) 
+
+        if self.ftt_tr_run:
+            dyn_hh_cons = self._apply_ftt_tr_hh(self, year, dyn_hh_cons)
         self.V.write_var('household_consumption', year, dyn_hh_cons.reset_index().rename(columns={'VIPA':'household_consumption'}), from_df=True)
     
         print("--- 4.2.2 DYNAMICS - consumption: %s seconds ---" % round(time.time() - module_time, 1))
