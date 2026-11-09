@@ -377,6 +377,13 @@ class ModelRun:
             # Instantiate the run
             self.ftt_model = ftt()
 
+            _ftt_not_in_mset = [r for r in self.ftt_model.titles['RTI_short'] if r not in self.EXOG_VARS.R_list]
+            if _ftt_not_in_mset:
+                raise ValueError(
+                    f"FTT regions {_ftt_not_in_mset} are not MSET regions (EXOG_VARS.R). "
+                    "Their FTT signal would be dropped silently; check the region aggregation of the FTT inputs "
+                    "against MSET's (see MINDSET_FTT_Power/Utilities/titles).")
+
             # Call solve_year method for each year while MINDSET is not started
             self.ftt_model.ftt_start = min(self.ftt_model.timeline)
             mindset_start = min(self.years)
