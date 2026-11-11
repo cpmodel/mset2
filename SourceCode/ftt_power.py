@@ -61,8 +61,8 @@ def redistribute_power_fuel_use(cur, prev, growth):
     """Rescale power-sector fuel flows (TJ) to FTT's regional fuel growth.
 
     Applies FTT's year-on-year growth ratio to last year's regional total then
-    splits it across suppliers using the current supplier shares derived from
-    MSET's solved input-output table.
+    splits it across suppliers using MSET's current energy balance supplier 
+    shares.
     
     If a region's current flows sum to zero, previous-year shares are used. If
     previous flows are also zero, current values are kept. Regions with a
@@ -98,48 +98,6 @@ def redistribute_power_fuel_use(cur, prev, growth):
     new = np.where(prev_total == 0, cur_v, prev_total * growth_row * share)
     return pd.Series(np.where(np.isnan(growth_row), cur_v, new), 
                      index=cur.index, name=cur.name)
-
-
-def _derive_current_power_fuel_use(new_io, energy_flows, implicit_prices,
-                                   sectors):
-    """Derive current power-sector physical fuel flows from the solved IO table.
-    
-    Args:
-        new_io (pd.DataFrame): solved input-output table for the current year
-        energy_flows (pd.DataFrame): current-year energy balance (TJ) for 
-            electricity demand
-        implicit_prices (pd.DataFrame): implicit fuel prices (kUSD/TJ) for power
-            sector fuel rows, indexed by (REG_imp, REG_exp, PROD_COMM, 
-            TRAD_COMM)
-        sectors (set of int): TRAD_COMM values of power-sector fuel suppliers
-        
-    Returns:
-        pd.Series: current-year power-sector fuel flows (TJ) indexed by 
-            (REG_imp, REG_exp, PROD_COMM, TRAD_COMM)
-    
-    """
-    power_fuel_rows = (
-        (new_io['PROD_COMM'] == 93)
-        & new_io['TRAD_COMM'].isin(sectors)
-    )
-    flow_keys = pd.MultiIndex.from_frame(
-        new_io.loc[power_fuel_rows, ['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM']]
-    )
-    prices = (
-        implicit_prices
-        .set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])['fuel_implicit_price']
-        .reindex(flow_keys)
-        .to_numpy(dtype=float)
-    )
-    monetary_flows = new_io.loc[power_fuel_rows, 'z_bp'].to_numpy(dtype=float)
-    valid = np.isfinite(prices) & (prices > 0) & np.isfinite(monetary_flows)
-    physical_flows = pd.Series(np.nan, index=flow_keys, dtype=float)
-    physical_flows.iloc[valid] = monetary_flows[valid] / prices[valid]
-
-    current_flows = energy_flows['fuel_use']
-    physical_flows = physical_flows.reindex(current_flows.index)
-    valid = physical_flows.notna() & np.isfinite(physical_flows.to_numpy(dtype=float))
-    return current_flows.where(~valid, physical_flows)
 
 
 def _get_power_fuel_implicit_prices(V, model_start, sectors):
@@ -298,23 +256,9 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
         # FTT primary energy demand (MEPD) for the current and previous year.
         ftt_energy_dem = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, ftt_yr_idx]
         ftt_energy_dem_prev = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, ftt_yr_idx - 1]
-        # Current-year energy_flows comes from the lagged IO base. Replace power-fuel
-        # supplier flows with solved current-year IO flows before calculating shares.
+        # Read energy_flows once before the loop; all sector updates are applied in-place,
+        # then written back once after the loop (avoids N reads+writes for N fuel sectors).
         energy_flows = self.V.read_var_df('energy_flows', year).set_index(['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM']).sort_index()
-        new_io = self.V.read_var_df('new_IO', year)
-        fuel_sectors = set(
-            ftt_model.ftt_fuel_converter.loc[
-                ftt_model.ftt_fuel_converter['TRAD_COMM'] != 93, 'TRAD_COMM'
-            ]
-        )
-        # Use model-start implicit prices to convert solved monetary IO flows to TJ.
-        implicit_prices = _get_power_fuel_implicit_prices(
-            self.V, model_start, fuel_sectors)
-        # Replace lagged supplier flows with the current-year IO-implied physical flows.
-        energy_flows['fuel_use'] = _derive_current_power_fuel_use(
-            new_io, energy_flows, implicit_prices, fuel_sectors)
-
-        # All sector updates are applied in-place, then written back once.
         ftt_fuel_sectors = set()  # TRAD_COMM values whose power-sector flows FTT updates
         # Loop over supplying sectors (skip TRAD_COMM=93: renewables/nuclear have no
         # fuel commodity input; including them corrupts the electricity demand fed back to FTT)
@@ -356,23 +300,22 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
         # coefficient summed across exporters.
         # TRAD_COMM=93 (electricity/renewables) is excluded by the continue above.
         if ftt_fuel_sectors:
+            new_io = self.V.read_var_df('new_IO', year)
             power_rows = new_io['PROD_COMM'] == 93
             power_fuel_rows = power_rows & new_io['TRAD_COMM'].isin(ftt_fuel_sectors)
             flow_key = pd.MultiIndex.from_frame(
                 new_io.loc[power_fuel_rows, ['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM']])
             # Physical targets FTT just wrote to energy_flows, reindexed onto new_IO rows.
             physical_target = energy_flows['fuel_use'].reindex(flow_key)
+            implicit_prices = _get_power_fuel_implicit_prices(
+                self.V, model_start, ftt_fuel_sectors)
             implicit_price = (
                 implicit_prices.set_index(
                     ['REG_imp', 'REG_exp', 'PROD_COMM', 'TRAD_COMM'])['fuel_implicit_price']
                 .reindex(flow_key)
             )
-            # Only overwrite rows with both a physical target and a valid price.
-            has_valid_target = (
-                physical_target.notna()
-                & np.isfinite(implicit_price.to_numpy(dtype=float))
-                & (implicit_price.to_numpy(dtype=float) > 0)
-            ).to_numpy()
+            # Only overwrite rows with both a physical target and a price.
+            has_valid_target = (physical_target.notna() & implicit_price.notna()).to_numpy()
             monetary_flow = (physical_target.fillna(0.0).to_numpy()
                              * implicit_price.fillna(0.0).to_numpy())
             new_io.loc[power_fuel_rows, 'z_bp'] = np.where(
