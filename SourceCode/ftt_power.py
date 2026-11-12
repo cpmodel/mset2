@@ -56,7 +56,7 @@ def ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx):
     return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
             investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
 
-def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base, 
+def solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
                    IO_model, model_start, model_end):
     """Run one year of FTT:Power and feed its results back into MSET.
 
@@ -69,7 +69,6 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base,
     Args:
         year (int): Current simulation year.
         ftt_model (MINDSET_FTT_Power.SourceCode.model_class.ModelRun): FTT model run, mutated in place.
-        DYNAMIC (dict): Dynamic model state; passed through unchanged.
         Scenario (SourceCode.scenario.scenario): Supplies ``tax_rate`` for carbon prices.
         ener_base (pd.DataFrame): Current-year energy balance (TJ) for electricity demand.
         IO_model (SourceCode.InputOutput.IO): Provides ``IND_BASE`` for fuel-price weights.
@@ -77,7 +76,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base,
         model_end (int): Last model year; FTT output is pickled in this year.
 
     Returns:
-        tuple: ``(ftt_model, DYNAMIC)``.
+        ftt_model: The updated FTT model.
 
     """
     
@@ -295,4 +294,4 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base,
         with open(output_dir / 'Results.pickle', 'wb') as results_file:
             pickle.dump(ftt_model.output, results_file)
             
-    return ftt_model, DYNAMIC
+    return ftt_model

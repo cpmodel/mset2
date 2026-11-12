@@ -1071,8 +1071,8 @@ class ModelRun:
     
         if self.ftt_run:
             ## FTT: Power
-            ftt_model, DYNAMIC = self._solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
-                                                               ener_base, IO_model, self.model_start, self.model_end)
+            ftt_model = self._solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
+                                             IO_model, self.model_start, self.model_end)
                 
         ## EMISSIONS
     
