@@ -13,10 +13,9 @@ import re
 from pathlib import Path
 import pickle
 
-# MWIY is in mEUR 2010. Convert to mUSD 2010 (1.33), then to mUSD 2019 (1.17),
-# then to th USD 2019 (1000), which is the unit of MSET's investment variables.
-FTT_INVESTMENT_TO_TH_USD = 1.33 * 1.17 * 1000
-
+# MWIY is in mUSD(2023). Convert to th USD 2019, the unit of MSET's investment variables.
+# CPI taken from US Bureau of Labor Statistics, CPI for All Urban Consumers (CPI-U)
+FTT_INVESTMENT_TO_TH_USD = (255.657 / 304.702) * 1000
 
 def _normalise_t2ti_name(name):
     """Remove a leading numeric label and separator from an FTT technology name."""
@@ -286,7 +285,7 @@ def solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario, ener_base,
             self.V.write_var_df('new_IO', year, new_io)
     # Assess investment
     ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx)
-    # Convert mEUR 2010 to th USD 2019 (MSET investment units)
+    # Convert mUSD 2023 to th USD 2019 (MSET investment units)
     ftt_model.investment[year] = ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
     # Export results in the last year
