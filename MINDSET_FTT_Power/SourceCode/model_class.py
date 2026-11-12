@@ -86,8 +86,12 @@ class ModelRun:
 
     """
 
-    def __init__(self):
-        """ Instantiate model run object """
+    def __init__(self, model_end):
+        """ Instantiate model run object
+
+        model_end: int. Final year of the run, supplied by MSET scenario file
+        so that both models share the same timeline.
+        """
 
         # Attributes given in settings.ini file
         _mindset_root = Path(__file__).parents[1]
@@ -96,9 +100,9 @@ class ModelRun:
         config.read(_settings_ini)
         self.name = config.get('settings', 'name')
         self.model_start = int(config.get('settings', 'model_start'))
-        self.model_end = int(config.get('settings', 'model_end'))
+        self.model_end = int(model_end)
         self.simulation_start = int(config.get('settings', 'simulation_start'))
-        self.simulation_end = int(config.get('settings', 'simulation_end'))
+        self.simulation_end = self.model_end
         self.current = self.model_start
         self.years = np.arange(self.model_start, self.model_end+1)
         self.timeline = np.arange(self.simulation_start, self.simulation_end+1)
