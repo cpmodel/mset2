@@ -347,9 +347,9 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
+            from SourceCode.ftt_power import run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
-            self._solve_year_ftt = solve_year_ftt
+            self._run_ftt_year = run_ftt_year
 
             # Instantiate the run
             self.ftt_model = ftt(model_end=self.model_end)
@@ -365,7 +365,7 @@ class ModelRun:
             self.ftt_model.investment = dict()
 
             # Fuel category -> technology indices mapping (static; cached once instead of
-            # rebuilt every solve_year_ftt call).
+            # rebuilt every run_ftt_year call).
             # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
             _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
             _t2ti_list = list(self.ftt_model.titles['T2TI'])
@@ -1071,8 +1071,8 @@ class ModelRun:
     
         if self.ftt_run:
             ## FTT: Power
-            ftt_model = self._solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
-                                             IO_model, self.model_start, self.model_end)
+            ftt_model = self._run_ftt_year(self, year, ftt_model, Scenario, ener_base,
+                                           IO_model, self.model_start, self.model_end)
                 
         ## EMISSIONS
     

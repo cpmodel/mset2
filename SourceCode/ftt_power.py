@@ -56,51 +56,46 @@ def ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx):
     return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
             investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
 
-def solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
-                   IO_model, model_start, model_end):
-    """Run one year of FTT:Power and feed its results back into MSET.
-
-    Feeds MSET electricity demand, fuel-price changes (after 2019), and
-    power-sector carbon prices into FTT, then rescales MSET's power-sector fuel
-    flows using year-on-year FTT MEPD growth. The same growth factors are
-    applied to matching ``new_IO`` rows; that updated IO table is carried
-    forward as the following year's ``IND_BASE``.
+def set_electricity_demand(ftt_model, ener_base, ftt_yr_idx, region_codes):
+    """Write MSET electricity demand to FTT's MEWD and MEWDX inputs in PJ.
 
     Args:
-        year (int): Current simulation year.
-        ftt_model (MINDSET_FTT_Power.SourceCode.model_class.ModelRun): FTT model run, mutated in place.
-        Scenario (SourceCode.scenario.scenario): Supplies ``tax_rate`` for carbon prices.
-        ener_base (pd.DataFrame): Current-year energy balance (TJ) for electricity demand.
-        IO_model (SourceCode.InputOutput.IO): Provides ``IND_BASE`` for fuel-price weights.
-        model_start (int): First model year; fuel growth is applied for years after it.
-        model_end (int): Last model year; FTT output is pickled in this year.
-
-    Returns:
-        ftt_model: The updated FTT model.
-
+        ftt_model: FTT model whose inputs are updated in place.
+        ener_base (pd.DataFrame): Current-year energy balance in TJ.
+        ftt_yr_idx (int): Current year index in FTT's time dimension.
+        region_codes (list): FTT region codes in output-array order.
     """
-    
-    # Get number of regions and technologies
-    n_regions = len(ftt_model.titles['RTI'])
-    n_techs = len(ftt_model.titles['T2TI'])
-    region_codes = list(ftt_model.titles['RTI_short'])
     # Get electricity demand and convert TJ to PJ
     elec_demand_pj = (
         ener_base.loc[ener_base.TRAD_COMM == 93]
         .groupby('REG_imp')
         .sum()['fuel_use'] / 1000
     )
-    # Calculate FTT year index
-    ftt_yr_idx = year - ftt_model.ftt_start
     ftt_scenario = ftt_model.scenarios
     # Get the index of electricity
     elec_idx = ftt_model.titles['JTI'].index('8 Electricity')
     # Assign electricity demand to FTT
-    elec_demand_vals = elec_demand_pj[list(ftt_model.titles['RTI_short'])].values
+    elec_demand_vals = elec_demand_pj[region_codes].values
     ftt_model.input[ftt_scenario]['MEWD'][:, elec_idx, 0, ftt_yr_idx] = elec_demand_vals
     ftt_model.input[ftt_scenario]['MEWDX'][:, elec_idx, 0, ftt_yr_idx] = elec_demand_vals
-    
-    # Supply MSET-estimated fuel-price changes to FTT after 2019.
+
+
+
+def set_fuel_price_changes(self, year, ftt_model, IO_model,
+                            n_regions, n_techs, region_codes):
+    """Set trade-weighted fuel-price changes on the FTT model after 2019.
+
+    Args:
+        self: MSET model providing price changes through its variable table.
+        year (int): Current simulation year.
+        ftt_model: FTT model receiving the price-change array.
+        IO_model: Input-output model providing trade-flow weights in IND_BASE.
+        n_regions (int): Number of FTT regions.
+        n_techs (int): Number of FTT technologies.
+        region_codes (list): FTT region codes in output-array order.
+        
+    """
+
     # fuel_price_index_change is stored on the model object (_mset_fuel_price_index_change)
     # rather than in the FTT input dict, so no change to FTT_Standalone's VariableListing.csv
     # is needed. model_class.py converts _mset_fuel_price_index_change to FPIX and injects it
@@ -148,7 +143,23 @@ def solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
             fuel_price_index_change[:, technology_idx, 0] = weighted_price_change.values
 
         ftt_model._mset_fuel_price_index_change = fuel_price_index_change
-        
+
+
+
+def set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes):
+    """Map MSET power-sector carbon prices to FTT regions and technologies.
+
+    A nonzero mapping is stored on the FTT model; an all-zero mapping leaves
+    any existing override unchanged.
+
+    Args:
+        ftt_model: FTT model receiving the carbon-price array.
+        Scenario: Scenario providing carbon prices in tax_rate.
+        n_regions (int): Number of FTT regions.
+        n_techs (int): Number of FTT technologies.
+        region_codes (list): FTT region codes in output-array order.
+    """
+
     # Carbon price: per-(region, technology) ctax in EUR2015/tCO2.
     # model_class.solve_year() applies the EUR2015→USD2013 conversion using current-year FTT exchange-rate variables.
     power_carbon_prices = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()
@@ -169,23 +180,26 @@ def solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
                     reppx_array[region_idx, technology_idx, 0] = (
                         avg_carbon_price_by_region[region_code]
                     )
+    # If the mapped prices are all zero, leave _mset_reppx unset (no MSET override).
     if np.any(reppx_array != 0):
         ftt_model._mset_reppx = reppx_array
-    # If the mapped prices are all zero, leave _mset_reppx unset (no MSET override).
-    # Solve year
-    ftt_model.variables, ftt_model.lags = ftt_model.solve_year(
-        year, ftt_yr_idx, ftt_model.scenarios
-    )
-    # Populate output container
-    for variable_name in ftt_model.variables:
-        if 'TIME' in ftt_model.dims[variable_name]:
-            ftt_model.output[ftt_model.scenarios][variable_name][
-                :, :, :, ftt_yr_idx
-            ] = ftt_model.variables[variable_name]
-        else:
-            ftt_model.output[ftt_model.scenarios][variable_name][
-                :, :, :, 0
-            ] = ftt_model.variables[variable_name]
+
+
+def apply_fuel_demand_feedback(self, year, ftt_model, ftt_yr_idx,
+                                model_start, region_codes):
+    """Apply FTT fuel-demand growth to MSET energy flows and IO coefficients.
+
+    No feedback is applied in the first model year. Later years use previous
+    energy flows and FTT MEPD growth, excluding electricity as an input fuel.
+
+    Args:
+        self: MSET model whose variable table is updated in place.
+        year (int): Current simulation year.
+        ftt_model: FTT model providing current and previous MEPD output.
+        ftt_yr_idx (int): Current year index in FTT's time dimension.
+        model_start (int): First model year.
+        region_codes (list): FTT region codes in output-array order.
+    """
     # Update power-sector fuel flows after the first model year using FTT growth.
     # Use the previous year's FTT energy demand as the growth baseline.
     if year > model_start:
@@ -223,7 +237,7 @@ def solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
             fuel_demand_growth = np.divide(current_fuel_demand, previous_fuel_demand,
                                            out=np.ones_like(current_fuel_demand),
                                            where=previous_fuel_demand != 0)
-            fuel_demand_growth = pd.Series(fuel_demand_growth, index=ftt_model.titles['RTI_short'])
+            fuel_demand_growth = pd.Series(fuel_demand_growth, index=region_codes)
             fuel_demand_growth_by_sector[sector] = fuel_demand_growth
             # Use prior-year power-sector flows as the baseline for this sector's growth update.
             power_energy_flows_for_sector = previous_power_energy_flows.loc[
@@ -282,6 +296,60 @@ def solve_year_ftt(self, year, ftt_model, Scenario, ener_base,
                 .transform('sum')
             )
             self.V.write_var_df('new_IO', year, new_io)
+
+
+def run_ftt_year(self, year, ftt_model, Scenario, ener_base,
+                 IO_model, model_start, model_end):
+    """Run one year of FTT:Power and feed its results back into MSET.
+
+    Feeds MSET electricity demand, fuel-price changes (after 2019), and
+    power-sector carbon prices into FTT, then rescales MSET's power-sector fuel
+    flows using year-on-year FTT MEPD growth. The same growth factors are
+    applied to matching ``new_IO`` rows; that updated IO table is carried
+    forward as the following year's ``IND_BASE``.
+
+    Args:
+        year (int): Current simulation year.
+        ftt_model (MINDSET_FTT_Power.SourceCode.model_class.ModelRun): FTT model run, mutated in place.
+        Scenario (SourceCode.scenario.scenario): Supplies ``tax_rate`` for carbon prices.
+        ener_base (pd.DataFrame): Current-year energy balance (TJ) for electricity demand.
+        IO_model (SourceCode.InputOutput.IO): Provides ``IND_BASE`` for fuel-price weights.
+        model_start (int): First model year; fuel growth is applied for years after it.
+        model_end (int): Last model year; FTT output is pickled in this year.
+
+    Returns:
+        ftt_model: The updated FTT model.
+
+    """
+    n_regions = len(ftt_model.titles['RTI'])
+    n_techs = len(ftt_model.titles['T2TI'])
+    region_codes = list(ftt_model.titles['RTI_short'])
+    ftt_yr_idx = year - ftt_model.ftt_start
+    
+    set_electricity_demand(ftt_model, ener_base, ftt_yr_idx, region_codes)
+    set_fuel_price_changes(
+        self, year, ftt_model, IO_model, n_regions, n_techs, region_codes
+    )
+    set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes)
+
+    # Solve FTT for the current year and store results in ftt_model.output
+    ftt_model.variables, ftt_model.lags = ftt_model.solve_year(
+        year, ftt_yr_idx, ftt_model.scenarios
+    )
+    for variable_name in ftt_model.variables:
+        if 'TIME' in ftt_model.dims[variable_name]:
+            ftt_model.output[ftt_model.scenarios][variable_name][
+                :, :, :, ftt_yr_idx
+            ] = ftt_model.variables[variable_name]
+        else:
+            ftt_model.output[ftt_model.scenarios][variable_name][
+                :, :, :, 0
+            ] = ftt_model.variables[variable_name]
+
+    apply_fuel_demand_feedback(
+        self, year, ftt_model, ftt_yr_idx, model_start, region_codes
+    )
+
     # Assess investment
     ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx)
     # Convert mUSD 2023 to th USD 2019 (MSET investment units)
