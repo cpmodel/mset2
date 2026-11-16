@@ -84,6 +84,9 @@ def set_electricity_demand(ftt_model, ener_base, ftt_yr_idx, region_codes):
 def set_fuel_price_changes(self, year, ftt_model, IO_model,
                             n_regions, n_techs, region_codes):
     """Set trade-weighted fuel-price changes on the FTT model after 2019.
+    
+    NOTE: This is not verified and will be adjusted in a future PR that focuses
+    on the FTT -> MSET feedback.
 
     Args:
         self: MSET model providing price changes through its variable table.
@@ -188,6 +191,9 @@ def set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes):
 def apply_fuel_demand_feedback(self, year, ftt_model, ftt_yr_idx,
                                 model_start, region_codes):
     """Apply FTT fuel-demand growth to MSET energy flows and IO coefficients.
+    
+    NOTE: This is not verified and will be adjusted in a future PR that focuses
+    on the FTT -> MSET feedback.
 
     No feedback is applied in the first model year. Later years use previous
     energy flows and FTT MEPD growth, excluding electricity as an input fuel.
