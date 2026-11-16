@@ -347,12 +347,12 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
+            from SourceCode.ftt_power import run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
-            self._solve_year_ftt = solve_year_ftt
+            self._run_ftt_year = run_ftt_year
 
             # Instantiate the run
-            self.ftt_model = ftt()
+            self.ftt_model = ftt(model_end=self.model_end)
 
             # Call solve_year method for each year while MINDSET is not started
             self.ftt_model.ftt_start = min(self.ftt_model.timeline)
@@ -365,7 +365,7 @@ class ModelRun:
             self.ftt_model.investment = dict()
 
             # Fuel category -> technology indices mapping (static; cached once instead of
-            # rebuilt every solve_year_ftt call).
+            # rebuilt every run_ftt_year call).
             # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
             _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
             _t2ti_list = list(self.ftt_model.titles['T2TI'])
@@ -386,6 +386,7 @@ class ModelRun:
 
                 # Assess investment
                 self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
+                # Convert mUSD 2023 to th USD 2019 (MSET investment units)
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
 
@@ -1070,8 +1071,8 @@ class ModelRun:
     
         if self.ftt_run:
             ## FTT: Power
-            ftt_model, DYNAMIC = self._solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
-                                                               ener_base, IO_model, self.model_start, self.model_end)
+            ftt_model = self._run_ftt_year(self, year, ftt_model, Scenario, ener_base,
+                                           IO_model, self.model_start, self.model_end)
                 
         ## EMISSIONS
     
@@ -1724,7 +1725,14 @@ class ModelRun:
                 electr_investment0 = self.V.read_var('dk_base', year, as_df=True, indexed=True)
                 electr_investment0 = electr_investment0.reset_index().loc[electr_investment0.reset_index().PROD_COMM == 93]
                 # FTT investment changes
-                d_ftt_investment = ftt_model.investment[year].sum(axis = 1) / ftt_model.investment[year - 1].sum(axis = 1)
+                previous_ftt_investment = ftt_model.investment[year - 1].sum(axis=1)
+                current_ftt_investment = ftt_model.investment[year].sum(axis=1)
+                d_ftt_investment = np.divide(
+                    current_ftt_investment,
+                    previous_ftt_investment,
+                    out=np.ones_like(current_ftt_investment, dtype=float),
+                    where=previous_ftt_investment != 0,
+                )
                 # Apply growth rates
                 electr_investment1 = electr_investment0.dk_base.values * d_ftt_investment
                 msk = "PROD_COMM == 93"
