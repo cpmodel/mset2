@@ -350,20 +350,29 @@ class variables_table:
             what_we_have = set(self.data.keys())
             print_ = list(what_we_have.intersection(what_we_want))
 
+            n_rows = empty.shape[0]
+
+            def column(x, y):
+                # missing years are NaN, and variables shorter than the table (e.g. dy_hh_exog) are padded with NaN
+                if y not in self.data[x].keys():
+                    return np.full(n_rows, np.nan)
+                v = np.asarray(self.data[x][y])
+                if len(v) == n_rows:
+                    return v
+                values = np.full(n_rows, np.nan)
+                values[:len(v)] = v
+                return values
+
+            # Build one block per year and concatenate once at the end: much faster than growing the table column by column
             year_dfs = []
 
             for y in years:
-                print_vector = [(self.data[x][y]) if (y in self.data[x].keys()) else np.full(empty.shape[0], np.nan) for x in print_]
                 year_df = empty.copy()
                 year_df['year'] = y
-                print_df = pd.DataFrame(print_vector).T
-                print_df.columns = print_
-                year_df = pd.concat([year_df, print_df], axis=1)
-                year_dfs.append(year_df)
+                values_df = pd.DataFrame({x: column(x, y) for x in print_}, index=year_df.index)
+                year_dfs.append(pd.concat([year_df, values_df], axis=1))
 
             res_table = pd.concat(year_dfs, axis=0, ignore_index=True)
-            res_table = res_table
-
             # import pdb; pdb.set_trace()
             # for v in vars_:
             #     try:

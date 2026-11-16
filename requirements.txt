@@ -10,6 +10,7 @@ pandas==2.3.3
 polars==2.1.0
 polars-runtime-32==2.1.0
 pyarrow==26.0.0
+pytest==9.2.0
 python-dateutil==3.0.0
 pytz==2026.6
 scipy==1.18.1

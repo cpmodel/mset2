@@ -1,0 +1,13 @@
+,1 Hard coal,2 Other coal etc,3 Crude oil etc,4 Heavy fuel oil,5 Middle distillates,6 Other gas,7 Natural gas,8 Electricity,9 Heat,10 Combustible waste,11 Biofuels,12 Hydrogen
+Nuclear,0.0,0.0,0,0,0,0.0,0.0,0,0,0,0.0,0
+Oil,0.0,0.0,1,1,1,0.0,0.0,0,0,0,0.0,0
+Coal,1.0,1.0,0,0,0,0.0,0.0,0,0,0,0.0,0
+Coal + CCS,0.1,0.1,0,0,0,0.0,0.0,0,0,0,0.0,0
+Gas,0.0,0.0,0,0,0,1.0,1.0,0,0,0,0.0,0
+Gas + CCS,0.0,0.0,0,0,0,0.1,0.1,0,0,0,0.0,0
+Bioenergy,0.0,0.0,0,0,0,0.0,0.0,0,0,0,0.0,0
+Bioenergy + CCS,0.0,0.0,0,0,0,0.0,0.0,0,0,0,-0.9,0
+Hydro,0.0,0.0,0,0,0,0.0,0.0,0,0,0,0.0,0
+Solar,0.0,0.0,0,0,0,0.0,0.0,0,0,0,0.0,0
+Wind,0.0,0.0,0,0,0,0.0,0.0,0,0,0,0.0,0
+Other Renewable,0.0,0.0,0,0,0,0.0,0.0,0,0,0,0.0,0

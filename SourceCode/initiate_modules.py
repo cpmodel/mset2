@@ -103,9 +103,6 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
 
         self.V.write_var('investment_price_index', year-1, self.V.read_var('price_index', year-1))
 
-        q_prev = EXOG_VARS.INITIAL_Q.pipe(lambda d: d[d['year']==year-1].copy())
-        self.V.write_var('output_current', year-1, q_prev.rename(columns={'q_base':'output_current'}), from_df=True)
-
         profit_rate = EXOG_VARS.INITIAL_Q.merge(EXOG_VARS.INITIAL_VA)
         profit_rate['profit_rate'] = profit_rate['profit'] / profit_rate['q_base']
 
