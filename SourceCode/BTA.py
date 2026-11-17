@@ -92,23 +92,10 @@ class BTA:
         
         self.bta_imp = bta_imp
 
-    def cbam_incidence_loop(self, country):
+    def cbam_incidence_loop(self, country, carbon_tax_rate):
         """
-        This loop calculates the CBAM incidence given carbon_tax_rate files generated
-        by earlier functions (these are stored in the Temp folder).
-        This loop is only expected to be run within the `calculate_cbam_incidence` function
-        in a parallel loop.
+        Calculate CBAM incidence for one country using the prepared carbon tax rates.
         """
-
-        # first get the carbon_tax_rate of the target
-        carbon_tax_rate = self.temp.read_from_pickle("carbon_tax_rate", delete_=False)
-        # calculate emission cost per flow
-        carbon_tax_rate = carbon_tax_rate.pipe(lambda d: d[~d['ctax'].isna()])
-        carbon_tax_rate = carbon_tax_rate.astype({'PROD_COMM':'str'})
-        carbon_tax_rate = carbon_tax_rate.drop(columns=['REG_exp','TRAD_COMM'])
-        # reg_exp and trad_comm is just technicality
-        carbon_tax_rate = carbon_tax_rate.groupby(['PROD_COMM','REG_imp']).agg({'ctax':'mean'}).reset_index()
-        # PROD_COMM REG_imp ctax
 
         mrio = self.emission_matrix[self.emission_matrix['REG_imp']==country]
         # share of flow within REG_imp / target-sector
@@ -226,11 +213,17 @@ class BTA:
         self.scope1 = scope1
         self.scope2 = scope2
 
+        carbon_tax_rate = self.temp.read_from_pickle("carbon_tax_rate", delete_=False)
+        carbon_tax_rate = carbon_tax_rate[~carbon_tax_rate['ctax'].isna()]
+        carbon_tax_rate = carbon_tax_rate.astype({'PROD_COMM':'str'})
+        carbon_tax_rate = carbon_tax_rate.drop(columns=['REG_exp','TRAD_COMM'])
+        carbon_tax_rate = carbon_tax_rate.groupby(['PROD_COMM','REG_imp']).agg({'ctax':'mean'}).reset_index()
+
         print("Calculating CBAM incidence... Parallel started.")
         futures_ = [] 
         with futures.ThreadPoolExecutor() as executor:
             for c in carbon_tax_countries:
-                futures_.append(executor.submit(self.cbam_incidence_loop, c))
+                futures_.append(executor.submit(self.cbam_incidence_loop, c, carbon_tax_rate))
         
             tmp_df = []
             # with tqdm(total=len(futures_)) as progress:
