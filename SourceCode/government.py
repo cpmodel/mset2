@@ -181,9 +181,13 @@ class gov:
         gov_base = gov_base[['REG_exp','REG_imp','TRAD_COMM','VIGA']].copy()
 
         consumption_shares = gov_base.merge(prices, how='left')
-        consumption_shares = consumption_shares.merge(emission_cost_, how='left', on=['REG_exp','REG_imp','TRAD_COMM']).fillna(0)
+        consumption_shares = consumption_shares.merge(emission_cost_, how='left', on=['REG_exp','REG_imp','TRAD_COMM'])
+        consumption_shares['emission_cost'] = consumption_shares['emission_cost'].fillna(0)
+        consumption_shares['price_index']   = consumption_shares['price_index'].fillna(1.0)
         consumption_shares['VIGA_nominal'] = consumption_shares['VIGA'] * consumption_shares['price_index']
-        consumption_shares['emission_cost'] = consumption_shares['emission_cost'] / consumption_shares['VIGA_nominal']
+        # emission cost as a share of nominal spend; no spend means no markup
+        cost_ratio = consumption_shares['emission_cost'] / consumption_shares['VIGA_nominal']
+        consumption_shares['emission_cost'] = cost_ratio.where(consumption_shares['VIGA_nominal'] > 0, 0)
         consumption_shares['emission_cost'] = consumption_shares['emission_cost'].apply(lambda x: 0 if x < 0 else (3.0 if x > 3.0 else x))
         consumption_shares['price_index'] = consumption_shares['price_index'] + consumption_shares['emission_cost']
         consumption_shares['share'] = consumption_shares['VIGA'] / consumption_shares.groupby(['REG_imp'])['VIGA'].transform('sum')
@@ -231,4 +235,3 @@ class gov:
         self.dGOV = dGOV
         
         return self.dGOV
-
