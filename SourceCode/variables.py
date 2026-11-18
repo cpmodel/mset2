@@ -169,8 +169,8 @@ class variables_table:
             print(f"Validation error: {inspect.stack()[1][3]} - #{inspect.stack()[1][2]}")
             import pdb; pdb.set_trace()
             raise ValueError("Validation failed for variable: {}; values sent to clipboard".format(var_name))
-        
-        if var_name in self.data.keys(): 
+
+        if var_name in self.data.keys():
             self.data[var_name][year] = input_use
         else:
             self.data[var_name] = {}
@@ -228,7 +228,7 @@ class variables_table:
             print(f"Validation error: {inspect.stack()[1][3]} - #{inspect.stack()[1][2]}")
             import pdb; pdb.set_trace()
             raise ValueError("Validation failed for variable: {}; values sent to clipboard".format(var_name))
-        
+
         self.data[var_name][year][idxs] = input_use
 
         if var_name in self.watch:

@@ -1,0 +1,167 @@
+CEFIO_S_code,CEFIO_sector_name,GLORIA_code_or_range
+S001,Farming Products,1-15
+S002,Forestry Products,21
+S003,Animal Products,16-20
+S004,Fishery Products,22-23
+S005,"Support Services to Farming, Forestry, Animal Production and Fishery",20
+S006,Mining and Washing Products of Coal,24-25
+S007,Extraction Products of Crude Petroleum and Natural Gas,26-27
+S008,Mining Products of Ferrous Metal Ores,28
+S009,Mining Products of Non-ferrous Metal Ores,29-36
+S010,Mining and Quarrying Products of Nonmetallic Mineral,37-39
+S011,Mining Support Activities and Other Mining and Quarrying n.e.c.,40
+S012,Grain Mill Products,47
+S013,Prepared Animal Feeds,50
+S014,Crude and Refined Oils from Vegetables,53
+S015,Sugar,51
+S016,Slaughtering and Processing Products of Meat,"41,42,43,44,45,52"
+S017,Aquatic Processing Products,46
+S018,"Vegetables, Fruits, Nuts, and Other Food Processing Products",48-49
+S019,Convenience Food Products,50
+S020,Milk and Dairy Products,54
+S021,Flavoring and Ferment Products,50
+S022,Other Food Products n.e.c.,50
+S023,Alcohol and Alcoholic Beverage,55
+S024,Soft Drinks,55
+S025,Refined Tea Products,55
+S026,Tobacco Products,56
+S027,"Spinning, Weaving and Finishing of Cotton and Chemical Fibers",57
+S028,"Spinning, Weaving and Finishing of Wool",57
+S029,"Spinning, Weaving and Finishing of Linen and Silk Fibers",57
+S030,"Knitted and Crocheted Fabrics and Articles, Except Apparel",57
+S031,"Made-up Textile Articles, Except Apparel",57
+S032,Textile Wearing Apparel,57
+S033,"Leather, Fur, Feather and Its Products",58
+S034,Footwear,58
+S035,"Timber Processing Products and Products of Wood, Bamboo, Rattan, Palm and Straw",59
+S036,Furniture,92
+S037,Paper and Paper Products,60
+S038,Printing and Reproduction of Recording Media,61
+S039,Products of Arts and Crafts,92
+S040,"Stationeries, Musical Instruments, Sports Goods, Games and Toys",92
+S041,"Refined Petroleum Products, Nuclear Fuel Processing Products",63
+S042,Coal Processing Products,62
+S043,Basic Chemicals,66-68
+S044,Fertilizers,64-65
+S045,Pesticides,70
+S046,"Paints, Printing Inks, Pigments and Similar Products",70
+S047,Synthetic Materials,68
+S048,"Special Chemical Products, Dynamites, Pyrotechnics and Fireworks",70
+S049,Daily-use Chemical Products,70
+S050,Pharmaceutical Products,69
+S051,Chemical Fibers,68
+S052,Rubber Products,71
+S053,Plastic Products,72
+S054,"Cement, Lime and Plaster",75
+S055,Products of Plaster and Cement and Similar Products,75-76
+S056,"Brick, Stone and Other Building Materials","73,76"
+S057,Glass and Glass Products,74
+S058,Ceramic and Porcelain Products,74
+S059,Refractory Products,76
+S060,Products of Graphite and Other Nonmetallic Minerals,76
+S061,Steel,77
+S062,Steel Rolling Products,77
+S063,Iron and Ferroalloy,77
+S064,Non-ferrous Metals and Related Alloys,78-84
+S065,Non-ferrous Metals Rolling Products,78-84
+S066,Fabricated Metal Products,85
+S067,Boiler and Prime Mover,86
+S068,Metalworking Machinery,86
+S069,Lifting and Handling Equipment,86
+S070,"Pump, Valve, Compressor and Similar Machinery",86
+S071,"Oven, Fan, Packaging and Other Equipment",86
+S072,"Movie, Office Machinery and Equipment, Projector and Camera",90
+S073,Other General-purpose Machinery,86
+S074,"Machinery for Mining, Metallurgy and Construction",86
+S075,"Machinery for Chemical Industry, Timber and Nonmetal Processing",86
+S076,"Machinery for Agriculture, Forestry, Animal Production and Fishery",86
+S077,Medical Instruments and Equipment,90
+S078,Other Special-purpose Machinery,86
+S079,"Motor Vehicles, Except Parts and Accessories for Motor Vehicles ",87
+S080,Parts and Accessories for Motor Vehicles,87
+S081,Railway Transport Equipment,88
+S082,Boats and Ships and Floating Devices,88
+S083,Other Transport Equipment,88
+S084,Generators and Electric Motors,91
+S085,Equipment for Power Transmission and Distribution and Control,91
+S086,"Wire, Cable, Optical Cable and Electrical Goods",91
+S087,Batteries,91
+S088,Household Appliances,91
+S089,Other Electrical Machinery and Equipment,91
+S090,Computer,90
+S091,Communication Equipment,90
+S092,"Broadcasting, Television Equipment, Radar and Related Equipment",90
+S093,Audiovisual Apparatus,90
+S094,Electronic Components and Parts,90
+S095,Other Electronic Equipment,90
+S096,Measuring Instruments,90
+S097,Other Manufacture,92
+S098,Comprehensive Utilization of Waste Resources,97
+S099,"Repair of Fabricated Metal Products, Machinery and Equipment",89
+S100,Coal Power (<100MW),93
+S101,Coal Power (100-200MW),93
+S102,Coal Power (200-300MW),93
+S103,Coal Power (300-600MW),93
+S104,Coal Power (600-1000MW),93
+S105,Coal Power (≥1000MW),93
+S106,Other Thermal Power n.e.c.,93
+S107,Hydropower,93
+S108,Nuclear Power,93
+S109,Wind Power,93
+S110,Solar Power,93
+S111,Other Electricity Production n.e.c.,93
+S112,Power Transmission and Distribution,93
+S113,Production and Distribution of Steam,93
+S114,Production and Distribution of Gas,94
+S115,Production and Distribution of Water,95
+S116,Construction of Residential Buildings,98
+S117,Construction of Gymnasiums and Other Buildings,98
+S118,"Railway, Road, Tunnel and Bridge Engineering",99
+S119,Other Civil Engineering,99
+S120,Construction Installation Activities,98-99
+S121,"Construction Completion and Finishing, Other Construction Activities",98
+S122,Wholesale Trade,100
+S123,Retail Trade,100
+S124,Railway Passenger Transport,102
+S125,Railway Freight Transport and Ancillary Activities,102
+S126,Urban Public Transport and Highway Passenger Transport,101
+S127,Highway Freight Transport and Ancillary Activities,101
+S128,Water Passenger Transport,104
+S129,Water Freight Transport and Ancillary Activities,104
+S130,Air Passenger Transport,105
+S131,Air Freight Transport and Ancillary Activities,105
+S132,Pipeline Transport,103
+S133,Multimodal Transport and Transport Agency,106
+S134,Cargo Handling and Storage,106
+S135,Post,107
+S136,Accommodation,108
+S137,Food and Beverage Services,108
+S138,Telecommunication,110
+S139,"Radio and Television, Satellite Transmission",109-110
+S140,Internet and Related Services,111
+S141,Software Services,111
+S142,Information Technology Services,111
+S143,Monetary Intermediation and Other Financial Services,112
+S144,Capital Market Services,112
+S145,Insurance,112
+S146,Real Estate,113
+S147,Renting and Leasing,113
+S148,Business Services,115
+S149,Research and Development,114
+S150,Professional Technique Services,114
+S151,Technique Promotion and Application Services,114
+S152,Management of Water Conservancy,95
+S153,Ecological Protection and Environmental Control,96
+S154,Management of Public Facilities and Land,116
+S155,Services to Households,120
+S156,Other Services,120
+S157,Education,117
+S158,Health Care,118
+S159,Social Work Activities,118
+S160,Journalism and Publishing,109
+S161,"Radio, Televisions, Movies and Audio-video Recording Activities",109
+S162,"Cultural, Art and Entertainment Activities",119
+S163,Sports Activities,119
+S164,Amusement and Recreation Activities,119
+S165,Social Security,116
+S166,Public Management and Social Organization,116
