@@ -1220,6 +1220,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
     dtax_rev, dlabor_nat = None, None
     A_trade_old = None
     cost_curves_impact_old = None
+    dempl_labour_supply_constraint = np.zeros_like(dempl_total)
     # these are the thereshold values for convergence
     # labor_diff, tax_diff = 0.05, 0.05
     # A_trade_diff = 0.05
@@ -1249,8 +1250,6 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
         if year > self.model_start:
             cost_curves_impact_old = cost_curves_impact[['REG_imp','PROD_COMM','input_cost_change']].copy()
             cost_curves_impact_old = cost_curves_impact_old.rename(columns={'input_cost_change':'input_cost_change_old'})
-
-        dempl_labour_supply_constraint = np.zeros_like(dempl_total)
 
         # ? calculate new emission cost based on new trade and new output
         Energy_emissions.update_ind_base(A_trade, self.V.read_var("output", year-1) + self.V.read_var("dq_total", year))
