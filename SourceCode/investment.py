@@ -215,7 +215,8 @@ class invest:
 
         # ! limit; we need this for sectors that go into zero and then back
         investment.loc[investment['dk'] > investment['dk_base'] * 3, 'dk'] = investment['dk_base'] * 3 
-        investment.loc[investment['dk'] + investment['dk_base'] < investment['dk_base'] * 0.1, 'dk'] = investment['dk_base'] * 0.1 
+        # floor: the new level (dk_base + dk) is at least 10% of last year's level
+        investment.loc[investment['dk'] + investment['dk_base'] < investment['dk_base'] * 0.1, 'dk'] = investment['dk_base'] * -0.9
 
         # ? new INV_CONV is: REG_imp | PROD_COMM | TRAD_COMM | input_coeff
         INV_CONV = self.INV_CONV.astype({'PROD_COMM':'int16','TRAD_COMM':'int16'})
