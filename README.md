@@ -60,6 +60,15 @@ the stage for the next period.
 - **Energy Balances Module**: variables and parameters related to energy balances and emissions and calculates energy flows,
             energy and emissions intensities, energy substitution and emissions by actor.
 
+### FTT coupling
+
+MSET can be coupled with [Future Technology Transformation (FTT)](https://github.com/cpmodel/FTT_StandAlone). To enable the power-sector coupling, set `ftt_run = True` in the MSET `.ini` file used for the run.
+
+- **MSET → FTT:Power:** MSET passes electricity demand and the power-sector carbon tax. Fuel-price changes are not currently consumed by FTT; other policy assumptions are specified in FTT’s own inputs.
+- **FTT:Power → MSET:** FTT’s generation mix feeds into MSET’s electricity-sector input–output coefficients. In `tech_matrix` mode, it also affects electricity-sector employment; `mepd` mode adjusts mapped fuel inputs only. FTT investment contributes to MSET investment demand.
+
+Coupling to FTT:Transport is planned.
+
 ## Model Setup
 
 1. Create a new regional aggregation file in the `GLORIA_template\Country_groupings` subfolder that defines how the 163 MINDSET regions should be collapsed. The easiest way to create a new grouping file is to copy one of the existing one and adjust the `country_groups` sheet.
@@ -74,5 +83,3 @@ python "ParseCode\collapse_FTT.py" "GLORIA_template\Country_groupings\new_groupi
 ```bash
 python MINDSET_dynamic_run.py "Scenario_Name" "Yes"
 ```
-
-

@@ -1,4 +1,5 @@
 **/__pycache__/
+.venv/
 MINDSET_FTT_Power/Inputs/
 MINDSET_FTT_Power/Output/
 MINDSET_FTT_Power/settings.ini

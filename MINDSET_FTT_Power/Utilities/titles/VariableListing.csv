@@ -13,7 +13,7 @@ MWMC,FTT:Power marginal costs,$2013/MWh,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,mean
 MWLO,FTT:Power optimal/initial load factors,%,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,mean
 MWKA,FTT:Power exogenous capacity levels (GW),GW,RTI,T2TI,,TIME,FTT-P,-,-,2010,-,,Y,mode
 coal phaseout,Switch for a coal phase-out,,,,,,FTT_P,-,-,-,-,-,Y,
-MWIY,FTT:Power yearly investment,meuros2010,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,sum
+MWIY,FTT:Power yearly investment,mUSD(2023),RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,sum
 MWICX,Exogenous FTT:Power investment cost component,$2013/MWh,RTI,T2TI,,TIME,FTT-P,-,-,2010,-,,Y,mean
 MWIC,FTT:Power investment cost component,$2013/MWh,RTI,T2TI,,TIME,FTT-P,-,-,2001,-,,Y,mean
 MWFCX,Exogenous FTT:Power fuel cost component,$2013/MWh,RTI,T2TI,,TIME,FTT-P,-,-,2010,-,,Y,mean
