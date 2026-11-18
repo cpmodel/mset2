@@ -16,5 +16,7 @@ labor market outcomes.
    :maxdepth: 2
    :caption: Contents:
 
+   _source/model_overview
+   _source/settings_files
    _source/model_solving
 
