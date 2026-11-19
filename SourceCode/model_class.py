@@ -1527,50 +1527,18 @@ class ModelRun:
         # Final demand from investment for capital good in next year
         if self.ftt_run:
             if year > 2025:
-                # Add FTT investment final demand here, but first regionally distribute investment
-                # Use the distribution from INV_model.investment_induced in the electricity sector to share 
-                # capital goods across REG_exp
-                elec_investment_induced = INV_model.investment_induced.loc[INV_model.investment_induced.PROD_COMM == 93, :].copy()
-                # FTT investment is already split by capital good (TRAD_COMM), so only the
-                # supplier-region (REG_exp) share within each (REG_imp, TRAD_COMM) is needed
-                elec_investment_induced['dy_Total'] = elec_investment_induced.groupby(['REG_imp', 'TRAD_COMM'])['dy'].transform('sum')
-                elec_investment_induced['dy_share'] = np.divide(elec_investment_induced['dy'], elec_investment_induced['dy_Total'],
-                                                                out=np.zeros(len(elec_investment_induced)),
-                                                                where=elec_investment_induced['dy_Total'] != 0)
-                # Get FTT investment
-                ftt_inv0 = pd.DataFrame(ftt_model.investment[year - 1], index = INV_model.R_list, columns = INV_model.P_list).reset_index().melt(
-                                            id_vars='index',
-                                            var_name='TRAD_COMM',
-                                            value_name='FTT_investment'
-                                        ).rename(columns={'index': 'REG_imp'})
-                ftt_inv1 = pd.DataFrame(ftt_model.investment[year], index = INV_model.R_list, columns = INV_model.P_list).reset_index().melt(
-                                            id_vars='index',
-                                            var_name='TRAD_COMM',
-                                            value_name='FTT_investment'
-                                        ).rename(columns={'index': 'REG_imp'})
-                
-                ftt_inv_chng = ftt_inv1.copy()
-                ftt_inv_chng['FTT_investment'] = np.divide(ftt_inv_chng['FTT_investment'], ftt_inv0['FTT_investment'], 
-                                                           where = ftt_inv0['FTT_investment'] != 0, 
-                                                           out=np.ones_like(ftt_inv_chng['FTT_investment'], 
-                                                                            dtype = float))
-
-                                                           # ftt_investment_chng = np.divide(ftt_model.investment[year], ftt_model.investment[year - 1], out=np.zeros_like(ftt_model.investment[year]), 
-                #                                       where=ftt_model.investment[year - 1]!=0)
-                # ftt_inv_chng = pd.DataFrame(investment_chng, index = INV_model.R_list, columns = INV_model.P_list).reset_index().melt(
-                #                             id_vars='index',
-                #                             var_name='TRAD_COMM',
-                #                             value_name='FTT_investment'
-                #                         ).rename(columns={'index': 'REG_imp'})
-                elec_investment_induced = elec_investment_induced.merge(ftt_inv1, on=['REG_imp', 'TRAD_COMM'], suffixes=('', '_share'))
-                elec_investment_induced['FTT_investment'] = elec_investment_induced['FTT_investment'] * elec_investment_induced['dy_share']
-                elec_investment_induced = elec_investment_induced.groupby(['REG_exp', 'TRAD_COMM', 'REG_imp']).sum().reset_index()
-                # Allcoate matching indices
-                elec_investment_induced = elec_investment_induced.merge(INV_model.dy_inv_induced.reset_index(), on=['REG_exp', 'TRAD_COMM', 'REG_imp'], suffixes=('', '_'))
-                elec_investment_induced = elec_investment_induced.set_index('index')
-                # This adds FTT investment to current demand only; it is not yet carried into
-                # investment_induced for future MSET capital-stock dynamics.
-                INV_model.dy_inv_induced.loc[elec_investment_induced.index, 'dy'] += elec_investment_induced['FTT_investment']
+                ftt_index = ftt_model.titles['RTI_short']
+                ftt_products = ftt_model.ftt_inv_converter.index
+                previous_ftt = pd.DataFrame(
+                    ftt_model.investment[year - 1], index=ftt_index, columns=ftt_products,
+                ).reindex(index=INV_model.R_list, columns=INV_model.P_list).to_numpy()
+                current_ftt = pd.DataFrame(
+                    ftt_model.investment[year], index=ftt_index, columns=ftt_products,
+                ).reindex(index=INV_model.R_list, columns=INV_model.P_list).to_numpy()
+                INV_model.replace_electricity_investment_change(
+                    previous_ftt, current_ftt,
+                    self.V.read_var('dk_base', year, as_df=True), IO_model.IND_BASE,
+                )
         
         DYNAMIC["dy_inv_induced_L1"] = MRIO_df_to_vec_DEF(INV_model.dy_inv_induced.rename(columns={'TRAD_COMM':'PROD_COMM','REG_imp':'IMP','REG_exp':'REG_imp'}), 'dy')
         DYNAMIC['inv_induced_L1'] = INV_model.investment_induced
@@ -1590,13 +1558,11 @@ class ModelRun:
         investment = investment.fillna(0)
         # investment['dk'] = investment['dk_induced'] + investment['dk_exog'] + investment['dk_recyc'] + investment['dk_base'] # NOT USED
         investment['dk_base_new'] = investment['dk_induced'] + investment['dk_base'] + investment['dk_recyc']
-        # investment in the period that we need to add to capital stock
-        if self.ftt_run:
-            # if (ftt_model.investment[year - 1].sum() > 0):
-            if year > 2025:
-                # Set electricity sector investment to 0, final demand of elec investment is added to induced investment
-                electr_investment = investment.loc[investment.PROD_COMM == 93, 'dk_base_new'].copy()
-                investment.loc[investment.PROD_COMM == 93, 'dk_base_new'] = 0
+        if self.ftt_run and year > 2025:
+            electricity = investment.PROD_COMM == 93
+            investment.loc[electricity, 'dk_base_new'] = (
+                investment.loc[electricity, 'dk_base'] + investment.loc[electricity, 'dk_induced']
+            )
     
         inv = investment[['REG_imp','PROD_COMM','dk_base_new']].rename(columns={'dk_base_new':'dk_base'})
         self.V.write_var('dk_base', year+1, inv, from_df=True)
@@ -1715,27 +1681,6 @@ class ModelRun:
     
         print("--- 4.2.7 DYNAMICS - Govt: %s seconds ---" % round(time.time() - module_time, 1))
     
-        # Add FTT investment to investment variable and its lag here
-        if self.ftt_run:
-            # if ftt_model.investment[year - 1].sum() > 0:
-            if year > 2025:
-                # Investment from previous year
-                electr_investment0 = self.V.read_var('dk_base', year, as_df=True, indexed=True)
-                electr_investment0 = electr_investment0.reset_index().loc[electr_investment0.reset_index().PROD_COMM == 93]
-                # FTT investment changes
-                previous_ftt_investment = ftt_model.investment[year - 1].sum(axis=1)
-                current_ftt_investment = ftt_model.investment[year].sum(axis=1)
-                d_ftt_investment = np.divide(
-                    current_ftt_investment,
-                    previous_ftt_investment,
-                    out=np.ones_like(current_ftt_investment, dtype=float),
-                    where=previous_ftt_investment != 0,
-                )
-                # Apply growth rates
-                electr_investment1 = electr_investment0.dk_base.values * d_ftt_investment
-                msk = "PROD_COMM == 93"
-                self.V.inject_var('dk_base', year + 1, electr_investment1, msk)
-
         print("--- {} run in: {} seconds ---".format(year,round(time.time() - year_time, 1)))
     
         # GLOBAL summary stats
