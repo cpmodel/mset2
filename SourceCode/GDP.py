@@ -59,7 +59,7 @@ class GDP():
             if type_ == "constant":
                 dgva = dq * np.sum(I - A1, axis=0)
             elif type_ == "current":
-                dgva = dq * np.sum(I - np.divide(np.multiply(A1,self.price_index[:, np.newaxis]), self.price_index), axis=0)
+                dgva = dq * self.price_index * np.sum(I - A1 * self.price_index[:, np.newaxis] / self.price_index, axis=0)
             return dgva
         else:
             dgva = {}
@@ -69,7 +69,7 @@ class GDP():
                 if type_ == "constant":
                     dgva_i = dq[i] * np.sum(I - A1, axis=0)
                 elif type_ == "current":
-                    dgva_i = dq[i] * np.sum(I - np.divide(np.multiply(A1,self.price_index[:, np.newaxis]), self.price_index), axis=0)
+                    dgva_i = dq[i] * self.price_index * np.sum(I - A1 * self.price_index[:, np.newaxis] / self.price_index, axis=0)
                     # dgva_i = dq[i] * np.sum(I - A1, axis=0)
                 dgva[i] = dgva_i
             return dgva.values()
