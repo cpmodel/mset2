@@ -424,6 +424,7 @@ class ModelRun:
             'HH_price': {},
             'carbon_tax_revenues': {},
             'investment_converter': pd.DataFrame(),
+            'ftt_electricity_investment_by_product': {},
             'interest_rate_adjust': pd.DataFrame(),
             'dq_exog_hh_prev': np.zeros((len(self.EXOG_VARS.R)*len(self.EXOG_VARS.P))),
             'dq_exog_fcf_prev': np.zeros((len(self.EXOG_VARS.R)*len(self.EXOG_VARS.P))),
@@ -1525,20 +1526,23 @@ class ModelRun:
         # ^ INDUCED INVESTMENT
         # ^ induced investment is lagged one year, i.e. only appears in the year following it's being induced
         # Final demand from investment for capital good in next year
-        if self.ftt_run:
-            if year > 2025:
-                ftt_index = ftt_model.titles['RTI_short']
-                ftt_products = ftt_model.ftt_inv_converter.index
-                previous_ftt = pd.DataFrame(
-                    ftt_model.investment[year - 1], index=ftt_index, columns=ftt_products,
-                ).reindex(index=INV_model.R_list, columns=INV_model.P_list).to_numpy()
-                current_ftt = pd.DataFrame(
-                    ftt_model.investment[year], index=ftt_index, columns=ftt_products,
-                ).reindex(index=INV_model.R_list, columns=INV_model.P_list).to_numpy()
-                INV_model.replace_electricity_investment_change(
-                    previous_ftt, current_ftt,
-                    self.V.read_var('dk_base', year, as_df=True), IO_model.IND_BASE,
-                )
+        if self.ftt_run and year > 2025:
+            ftt_regions = ftt_model.titles['RTI_short']
+            ftt_products = ftt_model.ftt_inv_converter.index
+            previous_ftt = pd.DataFrame(
+                ftt_model.investment[year - 1], index=ftt_regions, columns=ftt_products,
+            )
+            current_ftt = pd.DataFrame(
+                ftt_model.investment[year], index=ftt_regions, columns=ftt_products,
+            )
+            applied_investment_by_year = DYNAMIC['ftt_electricity_investment_by_product']
+            applied_investment_by_year[year] = INV_model.apply_ftt_change_to_electricity_investment(
+                previous_ftt,
+                current_ftt,
+                self.V.read_var('dk_base', year, as_df=True),
+                IO_model.IND_BASE,
+                previous_applied_investment=applied_investment_by_year.get(year - 1),
+            )
         
         DYNAMIC["dy_inv_induced_L1"] = MRIO_df_to_vec_DEF(INV_model.dy_inv_induced.rename(columns={'TRAD_COMM':'PROD_COMM','REG_imp':'IMP','REG_exp':'REG_imp'}), 'dy')
         DYNAMIC['inv_induced_L1'] = INV_model.investment_induced

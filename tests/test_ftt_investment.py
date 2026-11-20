@@ -32,10 +32,21 @@ class FTTInvestmentChangeTests(unittest.TestCase):
             ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM']
         )
 
+    def apply_change(self, previous, current, previous_applied_investment=None, flows=None):
+        previous = pd.DataFrame(previous, index=self.model.R_list, columns=self.model.P_list)
+        current = pd.DataFrame(current, index=self.model.R_list, columns=self.model.P_list)
+        return self.model.apply_ftt_change_to_electricity_investment(
+            previous,
+            current,
+            self.base,
+            self.flows if flows is None else flows,
+            previous_applied_investment=previous_applied_investment,
+        )
+
     def test_replaces_only_electricity_sector_and_preserves_product_mix_changes(self):
         previous = np.array([[120.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
         current = np.array([[110.0, 20.0, 0.0], [0.0, 0.0, 0.0]])
-        self.model.replace_electricity_investment_change(previous, current, self.base, self.flows)
+        self.apply_change(previous, current)
 
         result = self.model.investment_induced.set_index(
             ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM']
@@ -53,18 +64,17 @@ class FTTInvestmentChangeTests(unittest.TestCase):
         self.assertAlmostEqual(total.loc['A', 1, 'A'], -3.25)
 
     def test_zero_previous_investment_uses_absolute_change(self):
-        self.model.replace_electricity_investment_change(
-            np.zeros((2, 3)), np.array([[0, 0, 0], [25, 0, 0]]), self.base, self.flows,
+        self.apply_change(
+            np.zeros((2, 3)), np.array([[0, 0, 0], [25, 0, 0]]),
         )
         electricity = self.model.investment_induced.query('REG_imp == "B" and PROD_COMM == 93')
         self.assertAlmostEqual(electricity['dy'].sum(), 25)
         self.assertEqual(electricity.iloc[0]['REG_exp'], 'B')
 
     def test_product_mix_can_change_even_when_total_investment_does_not(self):
-        self.model.replace_electricity_investment_change(
+        self.apply_change(
             np.array([[120, 0, 0], [0, 0, 0]]),
             np.array([[60, 60, 0], [0, 0, 0]]),
-            self.base, self.flows,
         )
         electricity = self.model.investment_induced.query('PROD_COMM == 93')
         by_product = electricity.groupby('TRAD_COMM')['dy'].sum()
@@ -73,10 +83,9 @@ class FTTInvestmentChangeTests(unittest.TestCase):
         self.assertAlmostEqual(by_product.sum(), 0)
 
     def test_missing_investment_shares_use_other_sectors_trade(self):
-        self.model.replace_electricity_investment_change(
+        self.apply_change(
             np.array([[120, 0, 0], [0, 0, 0]]),
             np.array([[120, 0, 12], [0, 0, 0]]),
-            self.base, self.flows,
         )
         electricity = self.model.investment_induced.query('PROD_COMM == 93').set_index('REG_exp')
         self.assertAlmostEqual(electricity.loc['A', 'dy'], 3)
@@ -84,11 +93,26 @@ class FTTInvestmentChangeTests(unittest.TestCase):
 
     def test_missing_supplier_flows_are_not_silently_discarded(self):
         with self.assertRaisesRegex(ValueError, 'allocate FTT investment'):
-            self.model.replace_electricity_investment_change(
+            self.apply_change(
                 np.array([[120, 0, 0], [0, 0, 0]]),
                 np.array([[120, 0, 10], [0, 0, 0]]),
-                self.base, self.flows.iloc[0:0],
+                flows=self.flows.iloc[0:0],
             )
+
+    def test_partial_supplier_shares_raise(self):
+        previous = np.array([[120, 0, 0], [0, 0, 0]])
+        current = np.array([[60, 60, 0], [0, 0, 0]])
+        self.model.fcf_share.loc[0, 'FCF_share'] = 1.0
+        self.model.fcf_share.loc[1, 'FCF_share'] = np.nan
+
+        with self.assertRaisesRegex(ValueError, 'Cannot allocate FTT investment changes'):
+            self.apply_change(previous, current)
+
+    def test_non_finite_ftt_investment_raises(self):
+        previous = np.array([[np.inf, 0, 0], [0, 0, 0]])
+
+        with self.assertRaisesRegex(ValueError, 'finite'):
+            self.apply_change(previous, previous)
 
 
 if __name__ == '__main__':
