@@ -124,12 +124,6 @@ class ModelRun:
                                 else str(_mindset_root / 'Utilities'))
         set_paths(utilities_path=self._utilities_path)
         self.ftt_settings_path = _settings_ini
-        self.carbon_price_conv_factor = float(
-            config.get('settings', 'carbon_price_conv_factor', fallback='1.3281'))
-        # Read exchange-rate variable names from settings (must match ftt_p_main.py)
-        _ex_base_year = int(config.get('settings', 'ex_base_year', fallback='2018'))
-        self._prsc_ex_var = f"PRSC{str(_ex_base_year)[2:]}"   # e.g. "PRSC18"
-        self._ex_var      = f"EX{str(_ex_base_year)[2:]}"     # e.g. "EX18"
 
         # Load classification titles
         self.titles = titles_f.load_titles(self.data_root)
@@ -172,7 +166,7 @@ class ModelRun:
 
         # Carbon price coupling state (MSET-coupled mode only).
         # Written by ftt_power.py before each solve_year(); consumed in solve_year().
-        # Shape (n_reg, n_tech, 1) : one ctax per (region, technology) in EUR2015/tCO2.
+        # Shape (n_reg, n_tech, 1) : one ctax per (region, technology) in USD2023/tCO2.
         self._mset_reppx = None
 
         # Fuel price coupling state (MSET-coupled mode only).
@@ -254,16 +248,9 @@ class ModelRun:
 
         if "FTT-P" in self.ftt_modules:
 
-            # Convert MINDSET ctax (EUR2015/tCO2) to CO2taxP (USD2013/tCO2).
-            # Use time_lags for exchange-rate snapshots: variables has them as zero (no CSV in coupled Inputs).
+            # MSET's carbon price has already been converted to USD2023/tCO2.
             if self._mset_reppx is not None:
-                _prsc18 = time_lags.get(self._prsc_ex_var)
-                _ex18   = time_lags.get(self._ex_var)
-                if _prsc18 is not None and _ex18 is not None:
-                    denom = (variables['PRSCX'] * _ex18
-                             / np.maximum(_prsc18 * variables['EXX'], 1e-10))
-                    variables['CO2taxP'] = (self._mset_reppx * self.carbon_price_conv_factor
-                                            / np.where(denom != 0, denom, 1.0))
+                variables['CO2taxP'] = self._mset_reppx.copy()
                 self._mset_reppx = None   # consume : must be re-set each year by ftt_power.py
 
             # Overwrite BCET's '22 Gamma' column with MGAM before calling FTT_Standalone.
