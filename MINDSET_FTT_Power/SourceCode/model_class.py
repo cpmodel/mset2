@@ -47,8 +47,6 @@ class ModelRun:
 
         Support functions:
 
-        - `paths_append <paths_append.html>`__
-            Appends file path to sys path to enable import
         - `divide <divide.html>`__
             Bespoke element-wise divide which replaces divide-by-zeros with zeros
 
@@ -89,12 +87,16 @@ class ModelRun:
 
     """
 
-    def __init__(self, settings_path=None):
+    def __init__(self, model_end, settings_path=None):
         """ Instantiate model run object
-
-        settings_path: alternative settings file (e.g. a Transport-only run at native 71
-        regions). Its optional `data_root` key points at a folder holding its own
-        Inputs/ and Utilities/titles/; without it the run uses MINDSET_FTT_Power itself.
+        Args:
+            model_end: int. Final year of the run, supplied by MSET scenario file
+            so that both models share the same timeline.
+            
+            settings_path: alternative settings file (e.g. a Transport-only run at native 71
+            regions). Its optional `data_root` key points at a folder holding its own
+            Inputs/ and Utilities/titles/; without it the run uses MINDSET_FTT_Power itself.
+     
         """
 
         # Attributes given in settings.ini file
@@ -104,9 +106,9 @@ class ModelRun:
         config.read(_settings_ini)
         self.name = config.get('settings', 'name')
         self.model_start = int(config.get('settings', 'model_start'))
-        self.model_end = int(config.get('settings', 'model_end'))
+        self.model_end = int(model_end)
         self.simulation_start = int(config.get('settings', 'simulation_start'))
-        self.simulation_end = int(config.get('settings', 'simulation_end'))
+        self.simulation_end = self.model_end
         self.current = self.model_start
         self.years = np.arange(self.model_start, self.model_end+1)
         self.timeline = np.arange(self.simulation_start, self.simulation_end+1)
@@ -137,7 +139,7 @@ class ModelRun:
         # Load variable dimensions
         self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims(_data_root)
 
-        # Retrieve inputs ÔÇö C2TI size must match the CSV files at this point
+        # Retrieve inputs : C2TI size must match the CSV files at this point
         self.input = in_f.load_data(self.titles, self.dims, self.timeline,
                                     self.scenarios, self.ftt_modules,
                                     self.forstart, data_root=_data_root)
@@ -170,7 +172,7 @@ class ModelRun:
 
         # Carbon price coupling state (MSET-coupled mode only).
         # Written by ftt_power.py before each solve_year(); consumed in solve_year().
-        # Shape (n_reg, n_tech, 1) ÔÇö one ctax per (region, technology) in EUR2015/tCO2.
+        # Shape (n_reg, n_tech, 1) : one ctax per (region, technology) in EUR2015/tCO2.
         self._mset_reppx = None
 
         # Fuel price coupling state (MSET-coupled mode only).
@@ -262,7 +264,7 @@ class ModelRun:
                              / np.maximum(_prsc18 * variables['EXX'], 1e-10))
                     variables['CO2taxP'] = (self._mset_reppx * self.carbon_price_conv_factor
                                             / np.where(denom != 0, denom, 1.0))
-                self._mset_reppx = None   # consume ÔÇö must be re-set each year by ftt_power.py
+                self._mset_reppx = None   # consume : must be re-set each year by ftt_power.py
 
             # Overwrite BCET's '22 Gamma' column with MGAM before calling FTT_Standalone.
             if 'MGAM' in variables:
@@ -277,7 +279,7 @@ class ModelRun:
 
             # FPIX is cumulative fuel price index; _fpix_carry persists it. None = standalone (no change).
             fuel_price_index_change = self._mset_fuel_price_index_change if self._mset_fuel_price_index_change is not None else 0.0
-            self._mset_fuel_price_index_change = None   # consume ÔÇö must be re-set each year by ftt_power.py
+            self._mset_fuel_price_index_change = None   # consume : must be re-set each year by ftt_power.py
             if 'FPIX' in variables:
                 fpix_lag = np.where(self._fpix_carry == 0, 1.0, self._fpix_carry)
                 variables['FPIX'] = fpix_lag * (1.0 + fuel_price_index_change)

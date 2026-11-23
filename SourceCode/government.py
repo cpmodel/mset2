@@ -6,7 +6,6 @@ Created on Thu Jun 29 16:55:53 2023
 """
 
 import pandas as pd
-import numpy as np
 from SourceCode.utils import MRIO_df_to_vec, MRIO_vec_to_df
 import os
 
@@ -186,10 +185,12 @@ class gov:
         consumption_shares['emission_cost'] = consumption_shares['emission_cost'].fillna(0)
         consumption_shares['price_index']   = consumption_shares['price_index'].fillna(1.0)
         consumption_shares['VIGA_nominal'] = consumption_shares['VIGA'] * consumption_shares['price_index']
-        _denom = consumption_shares['VIGA_nominal'].replace(0, np.nan)
-        consumption_shares['emission_cost'] = (consumption_shares['emission_cost'] / _denom).fillna(0)
-        consumption_shares['emission_cost'] = consumption_shares['emission_cost'].apply(lambda x: 0 if x < 0 else (3.0 if x > 3.0 else x))
-        consumption_shares['price_index'] = consumption_shares['price_index'] + consumption_shares['emission_cost']
+        emission_cost_ratio = consumption_shares['emission_cost'] / consumption_shares['VIGA_nominal']
+        # Keep ratio only for positive spending, cap at 3x
+        emission_cost_ratio = emission_cost_ratio.where(consumption_shares['VIGA_nominal'] > 0, 0)
+        emission_cost_ratio = emission_cost_ratio.apply(lambda x: 0 if x < 0 else (3.0 if x > 3.0 else x))
+        consumption_shares['price_index'] = consumption_shares['price_index'] + emission_cost_ratio
+
         consumption_shares['share'] = consumption_shares['VIGA'] / consumption_shares.groupby(['REG_imp'])['VIGA'].transform('sum')
 
         #! ITT
@@ -235,4 +236,3 @@ class gov:
         self.dGOV = dGOV
         
         return self.dGOV
-
