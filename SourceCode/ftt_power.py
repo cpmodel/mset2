@@ -15,7 +15,8 @@ import pickle
 
 # MWIY is in mUSD(2023). Convert to th USD 2019, the unit of MSET's investment variables.
 # CPI taken from US Bureau of Labor Statistics, CPI for All Urban Consumers (CPI-U)
-FTT_INVESTMENT_TO_TH_USD = (255.657 / 304.702) * 1000
+USD_2019_TO_USD_2023 = 304.702 / 255.657
+FTT_INVESTMENT_TO_TH_USD = 1000 / USD_2019_TO_USD_2023
 
 def _normalise_t2ti_name(name):
     """Remove a leading numeric label and separator from an FTT technology name."""
@@ -163,8 +164,7 @@ def set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes):
         region_codes (list): FTT region codes in output-array order.
     """
 
-    # Carbon price: per-(region, technology) ctax in EUR2015/tCO2.
-    # model_class.solve_year() applies the EUR2015→USD2013 conversion using current-year FTT exchange-rate variables.
+    # Carbon price: per-(region, technology) ctax in USD 2019/tCO2, converted to USD 2023.
     power_carbon_prices = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()
     reppx_array = np.zeros((n_regions, n_techs, 1))
     # Fuel-to-technology index mapping is cached on ftt_model at init (model_class.py); static across years.
@@ -177,6 +177,7 @@ def set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes):
         if len(sector_carbon_prices) == 0:
             continue
         avg_carbon_price_by_region = sector_carbon_prices.groupby('REG_imp')['ctax'].mean()
+        avg_carbon_price_by_region = avg_carbon_price_by_region * USD_2019_TO_USD_2023
         for technology_idx in ftt_model.fuel_to_tech_idxs[fuel_type]:
             for region_idx, region_code in enumerate(region_codes):
                 if region_code in avg_carbon_price_by_region.index:
