@@ -65,7 +65,7 @@ the stage for the next period.
 MSET can be coupled with [Future Technology Transformation (FTT)](https://github.com/cpmodel/FTT_StandAlone). To enable the power-sector coupling, set `ftt_run = True` in the MSET `.ini` file used for the run.
 
 - **MSET → FTT:Power:** MSET passes electricity demand, the power-sector carbon tax, and fuel-price changes. Other policy assumptions are specified in FTT’s own inputs.
-- **FTT:Power → MSET:** FTT’s generation mix feeds into MSET’s electricity-sector input–output coefficients. In `tech_matrix` mode, it also affects electricity-sector employment; `mepd` mode adjusts mapped fuel inputs only. FTT investment contributes to MSET investment demand.
+- **FTT:Power → MSET:** FTT’s generation mix feeds into MSET’s electricity-sector input–output coefficients. In `tech_matrix` mode, it also affects electricity-sector employment; `mepd` mode adjusts mapped fuel inputs only. FTT determines electricity investment growth and goods mix, starting from MSET’s investment level.
 
 Coupling to FTT:Transport is planned.
 

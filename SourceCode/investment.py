@@ -9,6 +9,182 @@ import numpy as np
 import pandas as pd
 from SourceCode.utils import MRIO_df_to_vec, MRIO_vec_to_df
 
+
+def reconstruct_electricity_investment_demand(fcf, previous_fcf, totals, converter, previous_power, induced, recycled):
+    """Reconstruct electricity's existing investment by good and supplier region.
+
+    MSET records electricity's total investment and calculates changes by
+    good and supplier region, but does not store that breakdown for existing
+    investment. Estimate it using MSET's converter and supplier shares,
+    then update it as demand changes.
+    """
+    keys = ['REG_imp', 'REG_exp', 'TRAD_COMM']
+    current_fcf = fcf[keys + ['VDFA']].copy()
+    current_fcf['VDFA'] = current_fcf['VDFA'].clip(lower=0)
+
+    if previous_power is None:
+        # Start with MSET's electricity goods mix and existing supplier shares.
+        converter = converter.astype({'PROD_COMM': 'int', 'TRAD_COMM': 'int'})
+        weights = current_fcf.merge(
+            converter.loc[converter['PROD_COMM'] == 93, ['REG_imp', 'TRAD_COMM', 'input_coeff']],
+            on=['REG_imp', 'TRAD_COMM'], how='left',
+        )
+        product_total = weights.groupby(['REG_imp', 'TRAD_COMM'])['VDFA'].transform('sum')
+        weights['weight'] = weights['input_coeff'] * np.divide(
+            weights['VDFA'], product_total, out=np.zeros(len(weights)), where=product_total != 0,
+        )
+    else:
+        # Update the previous estimate with electricity's investment changes.
+        weights = fcf.merge(previous_power, on=keys, how='left')
+        power_induced = induced.loc[induced['PROD_COMM'] == 93, keys + ['dy']]
+        weights = weights.merge(power_induced.groupby(keys, as_index=False)['dy'].sum(), on=keys, how='left')
+        weights = weights.merge(
+            recycled.groupby(keys, as_index=False)['dy'].sum(),
+            on=keys, how='left', suffixes=('', '_power_recyc'),
+        )
+        change_columns = ['power', 'dy', 'dy_power_recyc']
+        weights[change_columns] = weights[change_columns].astype(float).fillna(0)
+
+        # Attribute aggregate trade and residual changes by electricity's share.
+        weights = weights.merge(previous_fcf[keys + ['VDFA']], on=keys, how='left', suffixes=('', '_previous'))
+        previous_value = weights['VDFA_previous'].fillna(0)
+        power_share = np.divide(
+            weights['power'], previous_value,
+            out=np.zeros(len(weights)), where=previous_value != 0,
+        )
+        weights['weight'] = (
+            weights['power'] + weights['dy'] + weights['dy_power_recyc']
+            + power_share * (weights['dy_trade'] + weights['dy_residual'])
+        ).clip(lower=0)
+
+    return fit_electricity_investment_to_demand(current_fcf, totals, weights), current_fcf
+
+
+def fit_electricity_investment_to_demand(fcf, totals, weights):
+    """Allocate electricity investment using the reconstruction's weights.
+
+    For each investing region, good and supplier region, the estimate cannot
+    exceed recorded investment demand from all sectors. Redistribute any
+    excess across other available investment demand.
+    """
+    keys = ['REG_imp', 'REG_exp', 'TRAD_COMM']
+
+    fcf_flow = fcf[keys + ['VDFA']].merge(weights[keys + ['weight']], on=keys, how='left')
+    fcf_flow['weight'] = fcf_flow['weight'].fillna(0).clip(lower=0)
+
+    # Initialise electricity investment for each FCF flow.
+    fcf_flow['power'] = 0.0
+    totals = totals.set_index('REG_imp')['dk_base']
+
+    if not totals.index.isin(fcf_flow['REG_imp']).all():
+        raise ValueError("Missing final demand for an electricity investment region")
+
+    for region, indices in fcf_flow.groupby('REG_imp').groups.items():
+        group = fcf_flow.loc[indices]
+        recorded_demand = group['VDFA'].to_numpy(dtype=float)
+        weights = group['weight'].to_numpy(dtype=float)
+        estimated_investment = np.zeros(len(group))
+        electricity_total = totals.loc[region]
+        unallocated = electricity_total
+
+        # Fit electricity's total within recorded demand for each good and supplier.
+        while unallocated > max(1e-8, abs(electricity_total) * 1e-12):
+            eligible = (recorded_demand - estimated_investment > 1e-8) & (weights > 0)
+            if not eligible.any():
+                raise ValueError(f"Cannot allocate electricity investment in {region}")
+
+            proposed = unallocated * weights[eligible] / weights[eligible].sum()
+            available_demand = recorded_demand[eligible] - estimated_investment[eligible]
+            estimated_investment[eligible] += np.minimum(proposed, available_demand)
+            unallocated = electricity_total - estimated_investment.sum()
+
+        fcf_flow.loc[indices, 'power'] = estimated_investment
+
+    return fcf_flow.loc[fcf_flow['power'] != 0, keys + ['power']]
+
+
+def apply_power_investment_mix(
+    induced, power_fcf, power_total, previous_ftt_goods, ftt_goods, fcf, intermediate_flows,
+):
+    """Apply FTT growth and goods mix to electricity's MSET investment base."""
+    keys = ['REG_imp', 'REG_exp', 'TRAD_COMM']
+    electricity_total = power_total.set_index('REG_imp')['dk_base']
+
+    if not np.isfinite(electricity_total.to_numpy()).all() or (electricity_total < 0).any():
+        raise ValueError("MSET electricity investment must be finite and non-negative")
+
+    previous_ftt_goods = previous_ftt_goods.reindex(electricity_total.index)
+    ftt_goods = ftt_goods.reindex(electricity_total.index)
+    if (not np.isfinite(previous_ftt_goods.to_numpy()).all()
+            or not np.isfinite(ftt_goods.to_numpy()).all()
+            or (previous_ftt_goods < 0).any().any() or (ftt_goods < 0).any().any()):
+        raise ValueError("FTT investment mix is not available")
+
+    # Scale FTT investment to MSET's electricity investment level.
+    previous_total = previous_ftt_goods.sum(axis=1)
+    ftt_goods = ftt_goods.div(previous_total, axis=0).mul(electricity_total, axis=0)
+
+    # Distribute the FTT goods across MSET's supplier regions.
+    ftt_goods = (
+        ftt_goods.rename_axis(index='REG_imp', columns='TRAD_COMM')
+        .stack(future_stack=True).rename('target').reset_index()
+    )
+    supplier_mix = power_supplier_region_mix(ftt_goods, fcf, intermediate_flows)
+
+    # Record the change from estimated existing electricity purchases.
+    power_change = power_fcf.merge(supplier_mix[keys + ['target']], on=keys, how='outer')
+    power_change[['power', 'target']] = power_change[['power', 'target']].astype(float).fillna(0)
+    power_change['dy'] = power_change['target'] - power_change['power']
+    power_change['PROD_COMM'] = 93
+
+    # Keep investment changes by all other sectors unchanged.
+    columns = ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM', 'dy']
+    other_investors = induced.loc[induced['PROD_COMM'] != 93, columns]
+    if other_investors.empty:
+        return power_change[columns].reset_index(drop=True)
+
+    return pd.concat([other_investors, power_change[columns]], ignore_index=True)
+
+
+def power_supplier_region_mix(product_investment, fcf, intermediate_flows):
+    """Allocate FTT goods to suppliers using investment, then intermediate trade."""
+    keys = ['REG_imp', 'TRAD_COMM']
+    fcf_supply = fcf.groupby(keys + ['REG_exp'], as_index=False)['VDFA'].sum()
+    fcf_supply['share'] = fcf_supply['VDFA'] / fcf_supply.groupby(keys)['VDFA'].transform('sum')
+    goods = product_investment.loc[product_investment['target'] > 0]
+    allocated = goods.merge(fcf_supply, on=keys, how='left')
+    supplier_share_totals = allocated.groupby(keys)['share'].sum()
+    goods_without_investment_suppliers = supplier_share_totals[
+        supplier_share_totals == 0
+    ].index.to_frame(index=False)
+
+    # Use other sectors' intermediate purchases where investment has no suppliers.
+    if len(goods_without_investment_suppliers) > 0:
+        missing_index = pd.MultiIndex.from_frame(goods_without_investment_suppliers)
+        flow_index = intermediate_flows.index
+        flow_groups = pd.MultiIndex.from_arrays([
+            flow_index.get_level_values('REG_imp'),
+            flow_index.get_level_values('TRAD_COMM'),
+        ])
+        fallback = intermediate_flows.loc[flow_groups.isin(missing_index), ['z_bp']].reset_index()
+        fallback = fallback.loc[pd.to_numeric(fallback['PROD_COMM']) != 93]
+        fallback = fallback.groupby(keys + ['REG_exp'], as_index=False, observed=True)['z_bp'].sum()
+        fallback['share'] = fallback['z_bp'] / fallback.groupby(keys, observed=True)['z_bp'].transform('sum')
+        allocated_pairs = pd.MultiIndex.from_frame(allocated[keys])
+        allocated = allocated.loc[~allocated_pairs.isin(missing_index)]
+        allocated = pd.concat([
+            allocated,
+            goods.merge(goods_without_investment_suppliers, on=keys).merge(fallback, on=keys, how='left'),
+        ], ignore_index=True)
+
+    allocated['share'] = allocated['share'].astype(float)
+    if (not np.isfinite(product_investment['target']).all()
+            or not np.isfinite(allocated['share']).all() or (allocated['share'] < 0).any()):
+        raise ValueError("Cannot allocate FTT investment: invalid investment values or supplier shares")
+    allocated['target'] *= allocated['share']
+    return allocated[['REG_imp', 'REG_exp', 'TRAD_COMM', 'target']]
+
+
 class invest:
     """
     This class collects the variables and parameters related to investment and calculates investment shares,
@@ -67,6 +243,7 @@ class invest:
         self.investment_induced = pd.DataFrame(columns=['REG_imp','PROD_COMM','dk'])
         self.investment_recyc = pd.DataFrame(columns=['REG_imp','PROD_COMM','dk'])
         self.investment_exog = pd.DataFrame(columns=['REG_imp','PROD_COMM','dk'])
+        self.power_recyc_demand = pd.DataFrame(columns=['REG_imp','REG_exp','TRAD_COMM','dy'])
 
         # load the following:
         # q_base, capital_stock, PARAMETERS
@@ -314,6 +491,9 @@ class invest:
             recyc_inv = recyc_inv.merge(price_index, how='left', on=['REG_exp','TRAD_COMM'])
 
             recyc_inv['dy'] = (recyc_inv['dk'] * recyc_inv['FCF_share']) / recyc_inv['price_index']
+            self.power_recyc_demand = recyc_inv.loc[
+                recyc_inv['PROD_COMM'] == 93, ['REG_imp', 'REG_exp', 'TRAD_COMM', 'dy']
+            ].fillna(0).copy()
             # TODO this needs to feed back to results --> (i.e. investment recyc up)
             recyc_inv = recyc_inv.drop(columns=['FCF_share','dk','price_index']).fillna(0)
 
@@ -323,6 +503,7 @@ class invest:
         
         else:
             self.dy_inv_recyc = pd.DataFrame(columns=['REG_exp','REG_imp','TRAD_COMM','dy'])
+            self.power_recyc_demand = pd.DataFrame(columns=['REG_imp','REG_exp','TRAD_COMM','dy'])
             
     def calc_dy_inv_exog(self, exog_inv:pd.DataFrame):
         # ? exog_inv has dimensions of

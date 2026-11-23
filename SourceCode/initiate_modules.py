@@ -1029,11 +1029,6 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
                                 "dy", EXOG_VARS.R['Region_acronyms'].to_list(), EXOG_VARS.P['Lfd_Nr'].to_list())
 
 
-    # Remove electricity investment from lagged investment so there is no double counting
-    if self.ftt_run:
-        n_sectors = len(INV_model.P_list)  # 120
-        elec_idx = np.arange(92, len(INV_model.R_list) * n_sectors, n_sectors)
-        DYNAMIC['dy_inv_induced_L1'][elec_idx] = 0
     dq_inv_induced, dq_inv_recyc, dq_inv_exog = IO_model.calc_dq_inv(DYNAMIC['dy_inv_induced_L1'], dy_inv_recyc, dy_inv_exog)
     self.V.write_var("dq_inv_exog", year, dq_inv_exog)
     self.V.write_var("dq_inv_recyc", year, dq_inv_recyc)
