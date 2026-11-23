@@ -36,7 +36,8 @@ note: output file will be GLORIA_results\\FullResults_XXXX.xlsx
 
 import os
 
-os.system("title MSET-v0.1.1-alpha")
+if os.name == 'nt':
+    os.system("title MSET-v0.1.1-alpha")
 print(" ")
 print(">>> MSET [Version v0.1.1-alpha]")
 print(">>> Model of Structural Economic Transformation")

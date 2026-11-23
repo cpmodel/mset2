@@ -56,6 +56,7 @@ import sys
 import gc
 import re
 import pickle
+import shutil
 import dill
 from pathlib import Path
 import json
@@ -83,7 +84,7 @@ from SourceCode.variables import variables_table
 from SourceCode.normal_output import normal_output_mod
 from SourceCode.ftt_power import solve_year_ftt
 from SourceCode.cost_curves import cost_curves
-from SourceCode.utils import temporary_storage
+from SourceCode.utils import temporary_storage, run_paths, atomic_pickle_dump, start_log_file
 from SourceCode.utils import logging
 from SourceCode.utils import MRIO_df_to_vec, MRIO_vec_to_df, MRIO_mat_to_df
 from SourceCode.initiate_modules import initiate_modules
@@ -235,7 +236,20 @@ class ModelRun:
         self.ITER_MAX = int(config.get('settings','ITER_MAX'))
 
         self.WRITE_AT_END = config.getboolean('settings', 'WRITE_AT_END')
-        
+
+        # Parallel-run support (all optional). Each run writes into Temp/<run_id>, Log/<run_id>
+        # and Results/<run_id>, run_id = {timestamp}_{scenario_name}[_{suffix}] unless `run_id` is set.
+        # keep_temp: keep Temp/<run_id> after a successful run (it is always kept on failure).
+        # debug_iter_csv: dump per-iteration diagnostics to Temp/<run_id>/iter{year}-{iter}.csv.
+        # residuals_dir: shared by design (a CALIBRATING run feeds later runs); point
+        #   concurrent calibration runs at different folders.
+        self.keep_temp = config.getboolean('settings', 'keep_temp', fallback=False)
+        self.debug_iter_csv = config.getboolean('settings', 'debug_iter_csv', fallback=False)
+        # write_log: copy console output (incl. warnings and tracebacks) to Results/<run_id>/run.log as it happens.
+        self.write_log = config.getboolean('settings', 'write_log', fallback=False)
+        self.residuals_dir = config.get('settings', 'residuals_dir', fallback='Residuals')
+        os.makedirs(self.residuals_dir, exist_ok=True)
+
         self.ftt_model = None
 
         # TODO move it from here
@@ -256,8 +270,18 @@ class ModelRun:
         #endregion
         
 
-        self.Log = logging()
-        self.V = variables_table(self.Log, self.scenario_name, self.model_start, self.model_end)
+        self.paths = run_paths(self.scenario_name, config.get('settings', 'run_id', fallback=None),
+                               suffix=config.get('settings', 'suffix', fallback=None))
+        self.run_id = self.paths.run_id
+        if self.write_log:
+            start_log_file(os.path.join(self.paths.results_dir, 'run.log'))
+        print(f"Run id: {self.run_id}")
+        # keep the exact settings next to the results they produced
+        shutil.copy2(self.settingsini or 's_base.ini', os.path.join(self.paths.results_dir, 'settings.ini'))
+
+        self.Log = logging(self.paths.log_dir, subdir=self.run_id)
+        self.V = variables_table(self.Log, self.scenario_name, self.model_start, self.model_end,
+                                 results_path=self.paths.results_dir)
         
         
         warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -285,25 +309,29 @@ class ModelRun:
         # CATCH if no SCENARIO provided or if SCENARIO file does not exists
         
         if self.scenario_name is None:
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("######################################################################################")
             print("!!!! ERROR: No scenario provided. In CMD mode you need to provide a scenario to run!")
             print("######################################################################################")
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit()
         
         cwd_ = os.getcwd()
         self.scenario_path = os.path.join(cwd_, "Data", "MSET_data", "Scenarios", f"{self.scenario_name}.xlsx")
         if not (os.path.isfile(self.scenario_path)):
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("")
             print("######################################################################################")
             print("!!!! ERROR: Scenario file not found!")
             print("!!!! NOT FOUND: {}".format(self.scenario_path))
             print("######################################################################################")
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit()
         
         print("######################################################################################")
@@ -324,9 +352,9 @@ class ModelRun:
         
         self.start_time = time.time()
         self.module_time = time.time()
-        self.temp = temporary_storage("Temp")
+        self.temp = temporary_storage(self.paths.temp_dir)
 
-        
+
         # INITIALIZE exogenous variables (excluding scenario variables)
         self.EXOG_VARS = exog_vars()
         self.EXOG_VARS.set_multiyear()
@@ -455,24 +483,34 @@ class ModelRun:
         #endregion
         
     def run(self):
-        
-        for year in self.years:
-            os.system("title MSET-v0.1.1-alpha - {}".format(year))
-            if self.ftt_model is None:
-                self.DYNAMIC, self.EXOG_VARS, self.CALIBRATING, self.MRIO_df_to_vec_DEF, \
-                                    self.MRIO_vec_to_df_DEF, self.ftt_model, self.Log = self.solve_year(year, self.DYNAMIC, self.EXOG_VARS, 
-                                                                                                        self.CALIBRATING, self.MRIO_df_to_vec_DEF, 
-                                                                                                        self.MRIO_vec_to_df_DEF, self.Log, ftt_model=None)
-            else:
-                self.DYNAMIC, self.EXOG_VARS, self.CALIBRATING, self.MRIO_df_to_vec_DEF, \
-                    self.MRIO_vec_to_df_DEF, self.ftt_model, self.Log = self.solve_year(year, self.DYNAMIC, self.EXOG_VARS, 
-                                                                                        self.CALIBRATING, self.MRIO_df_to_vec_DEF, 
-                                                                                        self.MRIO_vec_to_df_DEF, self.Log, ftt_model=self.ftt_model)
-            
+
+        try:
+            for year in self.years:
+                if os.name == 'nt':
+                    os.system("title MSET-v0.1.1-alpha - {} - {}".format(self.run_id, year))
+                if self.ftt_model is None:
+                    self.DYNAMIC, self.EXOG_VARS, self.CALIBRATING, self.MRIO_df_to_vec_DEF, \
+                                        self.MRIO_vec_to_df_DEF, self.ftt_model, self.Log = self.solve_year(year, self.DYNAMIC, self.EXOG_VARS,
+                                                                                                            self.CALIBRATING, self.MRIO_df_to_vec_DEF,
+                                                                                                            self.MRIO_vec_to_df_DEF, self.Log, ftt_model=None)
+                else:
+                    self.DYNAMIC, self.EXOG_VARS, self.CALIBRATING, self.MRIO_df_to_vec_DEF, \
+                        self.MRIO_vec_to_df_DEF, self.ftt_model, self.Log = self.solve_year(year, self.DYNAMIC, self.EXOG_VARS,
+                                                                                            self.CALIBRATING, self.MRIO_df_to_vec_DEF,
+                                                                                            self.MRIO_vec_to_df_DEF, self.Log, ftt_model=self.ftt_model)
+        except BaseException:
+            # keep the run's Temp folder (e.g. all_vars.pkl) for debugging
+            print(f"Run {self.run_id} did not finish; intermediate files kept in {self.temp.PATH}")
+            raise
+
+        if not self.keep_temp:
+            self.temp.cleanup()
+
         print("")
         total_runtime = time.time() - self.start_time
         print("--- Model run: %s seconds ---" % round(total_runtime, 1))
-        
+        print(f"--- Results in {self.paths.results_dir} ---")
+
         # for k, v in io_aggregate_time.items():
         #     fractime = v / total_runtime * 100
         #     print("Function {k} took {v:.2f} seconds ({fractime:.2f} percent)")
@@ -502,7 +540,7 @@ class ModelRun:
     
         if (not CALIBRATING):
             try:
-                with open(os.path.join("Residuals", f"residuals_{year}.pkl"), 'rb') as handle:
+                with open(os.path.join(self.residuals_dir, f"residuals_{year}.pkl"), 'rb') as handle:
                     residuals = pickle.load(handle)
                 CALIBRATION_VARS['residual_fd_hh'] = residuals['residual_consumption_hh']
                 CALIBRATION_VARS['residual_fd_gov'] = residuals['residual_consumption_gov']
@@ -618,7 +656,7 @@ class ModelRun:
                 to_save = list_ + vars_ + modules_
                 safe_vars = {name: locals()[name] for name in to_save if name in locals()}
         
-                with open(os.path.join("Temp","all_vars.pkl"), "wb") as f:
+                with open(os.path.join(self.temp.PATH, "all_vars.pkl"), "wb") as f:
                     dill.dump(safe_vars, f)
         
                 # make sure that residual does not cause negative consumption
@@ -686,7 +724,7 @@ class ModelRun:
         if CALIBRATING:
             # DYNAMIC['PROJECTION_OUTPUT'][[str(x) for x in years if x > year]] = \
                 # DYNAMIC['PROJECTION_OUTPUT'][[str(x) for x in years if x > year]].apply(lambda x: x - DYNAMIC['calibration_error']['residual_q'].values, axis=0)
-            pd.DataFrame.from_dict(DYNAMIC['calibration_error']).to_csv(os.path.join("Residuals", f"calibration_errors_{year}.csv"))
+            pd.DataFrame.from_dict(DYNAMIC['calibration_error']).to_csv(os.path.join(self.residuals_dir, f"calibration_errors_{year}.csv"))
             # ! write residuals to pickle
     
             residuals_obj = {
@@ -695,8 +733,8 @@ class ModelRun:
                 'residual_consumption_gov': DYNAMIC['residual_consumption_gov']
             }
     
-            with open(os.path.join("Residuals","residuals_{}.pkl".format(year)), 'wb') as handle:
-                pickle.dump(residuals_obj, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            # atomic: a concurrent non-calibrating run must never read a half-written pickle
+            atomic_pickle_dump(residuals_obj, os.path.join(self.residuals_dir, "residuals_{}.pkl".format(year)))
     
         #region 3_Final_results_calc_and_print [rgba(155,89,182,0.10)]
         #region desc [rgba(155,89,182,0.60)]
@@ -722,13 +760,15 @@ class ModelRun:
     
         # ! random check on strange prices
         if np.min(dyn_price['price_index']) < 0:
-            os.system('color 4')
+            if os.name == 'nt':
+                os.system('color 4')
             print("######################################################################################")
             print("!!!! ERROR: We have a price index that's below zero! That's not good.")
             print("######################################################################################")
             import pdb; pdb.set_trace()
             print("Exiting.")
-            os.system('color')
+            if os.name == 'nt':
+                os.system('color')
             quit()  
     
         price_index = self.V.read_var('price_index', year)
