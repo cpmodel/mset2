@@ -223,15 +223,15 @@ class ModelRun:
         self.dL_ener_file = str(config.get('settings', 'dL_ener_file')) 
         # TODO check whether / how this is still relevant?
         self.bta = int(config.get('settings', 'bta'))
-        self.CALIBRATING = istruefalse(config.get('settings', 'CALIBRATING'))
-        self.ftt_p_run = istruefalse(config.get('settings', 'ftt_p_run'), fallback='False')
+        self.CALIBRATING = config.getboolean('settings', 'CALIBRATING')
+        self.ftt_p_run = config.getboolean('settings', 'ftt_p_run', fallback=False)
         # FTT:Transport, run at its own regions and coupled through a live region map
         # (SourceCode/ftt_transport.py). All optional; off by default.
-        self.ftt_tr_run = istruefalse(config.get('settings', 'ftt_tr_run', fallback='False'))
+        self.ftt_tr_run = config.getboolean('settings', 'ftt_tr_run', fallback=False)
         self.ftt_tr_settings = config.get('settings', 'ftt_tr_settings', fallback='MINDSET_FTT_Power/settings_transport.ini')
         self.ftt_tr_region_mode = config.get('settings', 'ftt_tr_region_mode', fallback='crosswalk')  # crosswalk | identity
         self.ftt_tr_crosswalk = config.get('settings', 'ftt_tr_crosswalk', fallback='MINDSET_FTT_Power/Utilities/ftt71_to_ipcc10_crosswalk.csv')
-        self.ftt_tr_couple_household_energy = istruefalse(config.get('settings', 'ftt_tr_couple_household_energy', fallback='True'))
+        self.ftt_tr_couple_household_energy = config.getboolean('settings', 'ftt_tr_couple_household_energy', fallback=True)
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
