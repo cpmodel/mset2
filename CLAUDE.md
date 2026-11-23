@@ -91,7 +91,7 @@ All `.ini` files use `[settings]` section. Key parameters:
 | `model_start` / `model_end` | Simulation year range |
 | `CALIBRATING` | `True` = fit to historical data; `False` = endogenous forward run |
 | `mrio_inverse_recalculate` | Recompute Leontief/Ghoshian matrices |
-| `ftt_run` | Integrate FTT:Power sub-model |
+| `ftt_p_run` | Integrate FTT:Power sub-model |
 | `SWITCH_WITHIN_YEAR_LOOP` | Enable within-year convergence iterations |
 | `COND_LABOR/TAX/TRADE/PRICE` | Convergence thresholds (%) |
 | `ITER_MAX` | Max within-year iterations (default 100) |
@@ -114,7 +114,7 @@ Scenario assumptions live in `GLORIA_template/Scenarios/*.xlsx`. Each sheet cove
 
 ### FTT:Power Integration
 
-The `MINDSET_FTT_Power/` subdirectory contains a standalone electricity sector model. Enabled via `ftt_run = True` in the `.ini` config. Conversion tables in `MINDSET_FTT_Power/Utilities/` map FTT technology categories to MINDSET investment/fuel categories.
+The `MINDSET_FTT_Power/` subdirectory contains a standalone electricity sector model. Enabled via `ftt_p_run = True` in the `.ini` config. Conversion tables in `MINDSET_FTT_Power/Utilities/` map FTT technology categories to MINDSET investment/fuel categories.
 
 ## Output
 

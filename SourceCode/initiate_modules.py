@@ -1030,7 +1030,7 @@ def initiate_modules(self, DYNAMIC, EXOG_VARS, MRIO_df_to_vec_DEF, MRIO_vec_to_d
 
 
     # Remove electricity investment from lagged investment so there is no double counting
-    if self.ftt_run:
+    if self.ftt_p_run:
         n_sectors = len(INV_model.P_list)  # 120
         elec_idx = np.arange(92, len(INV_model.R_list) * n_sectors, n_sectors)
         DYNAMIC['dy_inv_induced_L1'][elec_idx] = 0

@@ -226,7 +226,7 @@ class ModelRun:
         # TODO check whether / how this is still relevant?
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = istruefalse(config.get('settings', 'CALIBRATING'))
-        self.ftt_run = istruefalse(config.get('settings', 'ftt_run'))
+        self.ftt_p_run = istruefalse(config.get('settings', 'ftt_p_run'), fallback='False')
         # FTT:Transport, run at its own regions and coupled through a live region map
         # (SourceCode/ftt_transport.py). All optional; off by default.
         self.ftt_tr_run = istruefalse(config.get('settings', 'ftt_tr_run', fallback='False'))
@@ -354,7 +354,7 @@ class ModelRun:
         #%%
         # Setup FTT:Power
 
-        if self.ftt_run:
+        if self.ftt_p_run:
             from SourceCode.ftt_power import solve_year_ftt, ftt_investment_by_mrio_sector
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
             self._solve_year_ftt = solve_year_ftt
@@ -1083,7 +1083,7 @@ class ModelRun:
         energy_change = ener_base
         
     
-        if self.ftt_run:
+        if self.ftt_p_run:
             ## FTT: Power
             ftt_model, DYNAMIC = self._solve_year_ftt(self, year, ftt_model, DYNAMIC, Scenario,
                                                                ener_base, IO_model, self.model_start, self.model_end)
@@ -1548,7 +1548,7 @@ class ModelRun:
         # ^ INDUCED INVESTMENT
         # ^ induced investment is lagged one year, i.e. only appears in the year following it's being induced
         # Final demand from investment for capital good in next year
-        if self.ftt_run:
+        if self.ftt_p_run:
             if year > 2025:
                 # Add FTT investment final demand here, but first regionally distribute investment
                 # Use the distribution from INV_model.investment_induced in the electricity sector to share 
@@ -1611,7 +1611,7 @@ class ModelRun:
         # investment['dk'] = investment['dk_induced'] + investment['dk_exog'] + investment['dk_recyc'] + investment['dk_base'] # NOT USED
         investment['dk_base_new'] = investment['dk_induced'] + investment['dk_base'] + investment['dk_recyc']
         # investment in the period that we need to add to capital stock
-        if self.ftt_run:
+        if self.ftt_p_run:
             # if (ftt_model.investment[year - 1].sum() > 0):
             if year > 2025:
                 # Set electricity sector investment to 0, final demand of elec investment is added to induced investment
@@ -1736,7 +1736,7 @@ class ModelRun:
         print("--- 4.2.7 DYNAMICS - Govt: %s seconds ---" % round(time.time() - module_time, 1))
     
         # Add FTT investment to investment variable and its lag here
-        if self.ftt_run:
+        if self.ftt_p_run:
             # if ftt_model.investment[year - 1].sum() > 0:
             if year > 2025:
                 # Investment from previous year
