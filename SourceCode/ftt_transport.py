@@ -39,7 +39,7 @@ def setup_ftt_transport(mset):
     """Build the FTT-Tr run, its region map and converters, and solve the years before MSET starts."""
     from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as FTTRun
 
-    tr = FTTRun(settings_path=mset.ftt_tr_settings)
+    tr = FTTRun(model_end=mset.model_end, settings_path=mset.ftt_tr_settings)
     tr.ftt_start = min(tr.timeline)
 
     ftt_codes = list(tr.titles['RTI_short'])
