@@ -57,7 +57,6 @@ import gc
 import re
 import pickle
 import dill
-from pathlib import Path
 import json
 import datetime
 import configparser
@@ -241,6 +240,7 @@ class ModelRun:
 
         self.WRITE_AT_END = config.getboolean('settings', 'WRITE_AT_END')
         
+        # ftt_model is updated within the setup_ftt functions
         self.ftt_model = None
         self.ftt_tr_model = None
 
@@ -350,53 +350,11 @@ class ModelRun:
         #endregion
         
         #%%
-        # Setup FTT:Power (solves the years before MSET starts)
-    
+        # Set up FTT models and solve their pre-MSET years.
         if self.ftt_p_run:
-            from SourceCode.ftt_power import run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
-            from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
-            self._run_ftt_year = run_ftt_year
+            from SourceCode.ftt_power import setup_ftt_power
+            setup_ftt_power(self)
 
-            # Instantiate the run
-            self.ftt_model = ftt(model_end=self.model_end)
-
-            # Call solve_year method for each year while MINDSET is not started
-            self.ftt_model.ftt_start = min(self.ftt_model.timeline)
-            mindset_start = min(self.years)
-            setup_years = np.arange(self.ftt_model.ftt_start, mindset_start)
-            self.ftt_model.ftt_fuel_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_to_mindset_fuels.csv')
-            self.ftt_model.ftt_tech_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_to_mindset_technology.csv')
-            self.ftt_model.ftt_inv_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_technology_investment_converter.csv')
-            self.ftt_model.ftt_inv_converter = self.ftt_model.ftt_inv_converter.set_index('PROD_COMM')
-            self.ftt_model.investment = dict()
-
-            # Fuel category -> technology indices mapping (static; cached once instead of
-            # rebuilt every run_ftt_year call).
-            # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
-            _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
-            _t2ti_list = list(self.ftt_model.titles['T2TI'])
-            self.ftt_model.fuel_to_tech_idxs = {}
-            for _, row in _conv_csv.iterrows():
-                self.ftt_model.fuel_to_tech_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
-            
-            for y, year in enumerate(setup_years):
-                # Solve year
-                self.ftt_model.variables, self.ftt_model.lags = self.ftt_model.solve_year(year, y, self.ftt_model.scenarios)
-
-                # Populate output container
-                for var in self.ftt_model.variables:
-                    if 'TIME' in self.ftt_model.dims[var]:
-                        self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, y] = self.ftt_model.variables[var]
-                    else:
-                        self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, 0] = self.ftt_model.variables[var]
-
-                # Assess investment
-                self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
-                # Convert mUSD 2023 to th USD 2019 (MSET investment units)
-                self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
-
-        # Setup FTT:Transport (solves the years before MSET starts)
-        # Unlike for FTT-P, the year loop is delegated to setup_ftt_transport
         if self.ftt_tr_run:
             from SourceCode.ftt_transport import setup_ftt_transport
             setup_ftt_transport(self)
@@ -1082,13 +1040,14 @@ class ModelRun:
     
         if self.ftt_p_run:
             ## FTT: Power
-            ftt_model = self._run_ftt_year(self, year, ftt_model, Scenario, ener_base,
-                                           IO_model, self.model_start, self.model_end)
+            from SourceCode.ftt_power import solve_year_ftt_power
+            ftt_model = solve_year_ftt_power(self, year, ftt_model, Scenario, ener_base,
+                                             IO_model, self.model_start, self.model_end)
 
         if self.ftt_tr_run:
             ## FTT: Transport (own FTT run; its effect on households is applied later, on household_consumption)
             from SourceCode.ftt_transport import solve_year_ftt_transport
-            solve_year_ftt_transport(self, year, DYNAMIC, Scenario)
+            solve_year_ftt_transport(self, year, Scenario)
                 
         ## EMISSIONS
     

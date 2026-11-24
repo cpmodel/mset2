@@ -10,15 +10,42 @@ Script serves as main interface between MSET and FTT-Power.
 import pandas as pd
 import numpy as np
 import re
-import datetime
-import json
 from pathlib import Path
-import pickle
+
+from SourceCode.ftt_common import export_ftt_results, solve_and_store
 
 # MWIY is in mUSD(2023). Convert to th USD 2019, the unit of MSET's investment variables.
 # CPI taken from US Bureau of Labor Statistics, CPI for All Urban Consumers (CPI-U)
 USD_2019_TO_USD_2023 = 304.702 / 255.657
 FTT_INVESTMENT_TO_TH_USD = 1000 / USD_2019_TO_USD_2023
+
+
+def setup_ftt_power(mset):
+    """Build the FTT-Power run and solve the years before MSET starts."""
+    from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as FTTRun
+
+    mset.ftt_model = FTTRun(model_end=mset.model_end)
+    ftt_model = mset.ftt_model
+    ftt_model.ftt_start = min(ftt_model.timeline)
+    setup_years = np.arange(ftt_model.ftt_start, min(mset.years))
+    ftt_model.ftt_fuel_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_to_mindset_fuels.csv')
+    ftt_model.ftt_tech_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_to_mindset_technology.csv')
+    ftt_model.ftt_inv_converter = pd.read_csv('MINDSET_FTT_Power/Utilities/ftt_technology_investment_converter.csv')
+    ftt_model.ftt_inv_converter = ftt_model.ftt_inv_converter.set_index('PROD_COMM')
+    ftt_model.investment = dict()
+
+    # converters.csv uses numbered T2TI names matching titles['T2TI'].
+    converters = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
+    technologies = list(ftt_model.titles['T2TI'])
+    ftt_model.fuel_to_tech_idxs = {}
+    for _, row in converters.iterrows():
+        ftt_model.fuel_to_tech_idxs.setdefault(row['ERTI'], []).append(technologies.index(row['T2TI']))
+
+    for y, year in enumerate(setup_years):
+        solve_and_store(ftt_model, year, y)
+        ftt_model.investment[year] = ftt_investment_by_mrio_sector(ftt_model, y)
+        ftt_model.investment[year] = ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
+
 
 def _normalise_t2ti_name(name):
     """Remove a leading numeric label and separator from an FTT technology name."""
@@ -58,20 +85,6 @@ def ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx):
     )
     return (np.array(ftt_model.ftt_inv_converter)[np.newaxis, :, :] *
             investment_by_mrio_sector[:, np.newaxis, :]).sum(axis=2)
-
-def export_ftt_results(ftt_model, output_dir):
-    """Write the run's metadata (Scenarios.json) and full output (Results.pickle) to output_dir."""
-    scenarios_log = {}
-    scenarios_log['S0'] = {}
-    scenarios_log['S0']['run'] = datetime.datetime.timestamp(datetime.datetime.now())
-    scenarios_log['S0']['description'] = "Test Scenario, provided by Cambridge Econometrics"
-    scenarios_log['S0']['years'] = [str(x) for x in ftt_model.timeline]
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with open(output_dir / 'Scenarios.json', 'w') as f:
-        json.dump(scenarios_log, f)
-    with open(output_dir / 'Results.pickle', 'wb') as f:
-        pickle.dump(ftt_model.output, f)
 
 def set_electricity_demand(ftt_model, ener_base, ftt_yr_idx, region_codes):
     """Write MSET electricity demand to FTT's MEWD and MEWDX inputs in PJ.
@@ -321,8 +334,8 @@ def apply_fuel_demand_feedback(self, year, ftt_model, ftt_yr_idx,
             self.V.write_var_df('new_IO', year, new_io)
 
 
-def run_ftt_year(self, year, ftt_model, Scenario, ener_base,
-                 IO_model, model_start, model_end):
+def solve_year_ftt_power(self, year, ftt_model, Scenario, ener_base,
+                         IO_model, model_start, model_end):
     """Run one year of FTT:Power and feed its results back into MSET.
 
     Feeds MSET electricity demand, fuel-price changes (after 2019), and
@@ -355,19 +368,7 @@ def run_ftt_year(self, year, ftt_model, Scenario, ener_base,
     )
     set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes)
 
-    # Solve FTT for the current year and store results in ftt_model.output
-    ftt_model.variables, ftt_model.lags = ftt_model.solve_year(
-        year, ftt_yr_idx, ftt_model.scenarios
-    )
-    for variable_name in ftt_model.variables:
-        if 'TIME' in ftt_model.dims[variable_name]:
-            ftt_model.output[ftt_model.scenarios][variable_name][
-                :, :, :, ftt_yr_idx
-            ] = ftt_model.variables[variable_name]
-        else:
-            ftt_model.output[ftt_model.scenarios][variable_name][
-                :, :, :, 0
-            ] = ftt_model.variables[variable_name]
+    solve_and_store(ftt_model, year, ftt_yr_idx)
 
     apply_fuel_demand_feedback(
         self, year, ftt_model, ftt_yr_idx, model_start, region_codes
