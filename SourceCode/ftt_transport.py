@@ -11,6 +11,7 @@ Hooks, wired in SourceCode/model_class.py (all behind ftt_tr_run = True):
     setup_ftt_transport(mset)             once, at model construction
     solve_year_ftt_transport(mset, ...)   every MSET year, after the FTT:Power step
     apply_household_consumption(mset, ...) every MSET year, on household_consumption just before it is written
+    export_ftt_transport_results(tr)       after household adjustment in the final year
 
 MSET -> FTT-Tr (before solving):
     CO2taxTr   household carbon price on the transport fuels, broadcast to FTT regions
@@ -202,14 +203,6 @@ def _collapse_outputs(tr, year, y):
 
 
 def apply_household_consumption(mset, year, hh_cons):
-    out = _adjust_household_consumption(mset, year, hh_cons)
-    if mset.ftt_tr_model is not None and year == mset.model_end:
-        _write_collapsed(mset.ftt_tr_model)      # after rho is recorded in the signals
-        _write_results(mset.ftt_tr_model)
-    return out
-
-
-def _adjust_household_consumption(mset, year, hh_cons):
     """Household consumption of fuels follows FTT-Tr for the transport part.
 
     hh_cons: DataFrame indexed (REG_imp, REG_exp, TRAD_COMM) with column VIPA (this year's
@@ -262,6 +255,12 @@ def _adjust_household_consumption(mset, year, hh_cons):
     ef['fuel_use'] = ef['fuel_use'] * ef_factor
     mset.V.write_var_df('energy_flows_fd', year, ef)
     return out
+
+
+def export_ftt_transport_results(tr):
+    """Export aggregated and full FTT-Tr results."""
+    _write_collapsed(tr)
+    _write_results(tr)
 
 
 def _write_collapsed(tr):

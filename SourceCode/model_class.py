@@ -398,9 +398,7 @@ class ModelRun:
         # Setup FTT:Transport (solves the years before MSET starts)
         # Unlike for FTT-P, the year loop is delegated to setup_ftt_transport
         if self.ftt_tr_run:
-            from SourceCode.ftt_transport import setup_ftt_transport, solve_year_ftt_transport, apply_household_consumption
-            self._solve_year_ftt_tr = solve_year_ftt_transport
-            self._apply_ftt_tr_hh = apply_household_consumption
+            from SourceCode.ftt_transport import setup_ftt_transport
             setup_ftt_transport(self)
 
         #%%
@@ -1089,7 +1087,8 @@ class ModelRun:
 
         if self.ftt_tr_run:
             ## FTT: Transport (own FTT run; its effect on households is applied later, on household_consumption)
-            self._solve_year_ftt_tr(self, year, DYNAMIC, Scenario)
+            from SourceCode.ftt_transport import solve_year_ftt_transport
+            solve_year_ftt_transport(self, year, DYNAMIC, Scenario)
                 
         ## EMISSIONS
     
@@ -1249,7 +1248,10 @@ class ModelRun:
         dyn_hh_cons['VIPA'] = dyn_hh_cons['VIPA'].apply(lambda x: x if x > 0.0 else 0.0) 
 
         if self.ftt_tr_run:
-            dyn_hh_cons = self._apply_ftt_tr_hh(self, year, dyn_hh_cons)
+            from SourceCode.ftt_transport import apply_household_consumption, export_ftt_transport_results
+            dyn_hh_cons = apply_household_consumption(self, year, dyn_hh_cons)
+            if self.ftt_tr_model is not None and year == self.model_end:
+                export_ftt_transport_results(self.ftt_tr_model)
         self.V.write_var('household_consumption', year, dyn_hh_cons.reset_index().rename(columns={'VIPA':'household_consumption'}), from_df=True)
     
         print("--- 4.2.2 DYNAMICS - consumption: %s seconds ---" % round(time.time() - module_time, 1))
