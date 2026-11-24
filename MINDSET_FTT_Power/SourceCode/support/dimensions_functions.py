@@ -16,14 +16,14 @@ import os
 import pandas as pd
 
 
-def load_dims():
+def load_dims(data_root='MINDSET_FTT_Power'):
     """ Load model dimensions """
 
     # Declare file name
     dims_file = 'VariableListing.csv'
 
     # Check that classification titles file exists
-    dims_path = os.path.join('MINDSET_FTT_Power', 'Utilities', 'titles', dims_file)
+    dims_path = os.path.join(data_root, 'Utilities', 'titles', dims_file)
     if not os.path.isfile(dims_path):
         print('Dimensions name file not found.')
 

@@ -224,7 +224,14 @@ class ModelRun:
         # TODO check whether / how this is still relevant?
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = config.getboolean('settings', 'CALIBRATING')
-        self.ftt_run = config.getboolean('settings', 'ftt_run')
+        self.ftt_p_run = config.getboolean('settings', 'ftt_p_run', fallback=False)
+        # FTT:Transport, run at its own regions and coupled through a live region map
+        # (SourceCode/ftt_transport.py). All optional; off by default.
+        self.ftt_tr_run = config.getboolean('settings', 'ftt_tr_run', fallback=False)
+        self.ftt_tr_settings = config.get('settings', 'ftt_tr_settings', fallback='MINDSET_FTT_Power/settings_transport.ini')
+        self.ftt_tr_region_mode = config.get('settings', 'ftt_tr_region_mode', fallback='crosswalk')  # crosswalk | identity
+        self.ftt_tr_crosswalk = config.get('settings', 'ftt_tr_crosswalk', fallback='MINDSET_FTT_Power/Utilities/ftt71_to_ipcc10_crosswalk.csv')
+        self.ftt_tr_couple_household_energy = config.getboolean('settings', 'ftt_tr_couple_household_energy', fallback=True)
 
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
@@ -235,6 +242,7 @@ class ModelRun:
         self.WRITE_AT_END = config.getboolean('settings', 'WRITE_AT_END')
         
         self.ftt_model = None
+        self.ftt_tr_model = None
 
         # TODO move it from here
         self.cost_curve_employment = [24,25,26]
@@ -342,9 +350,9 @@ class ModelRun:
         #endregion
         
         #%%
-        # Setup FTT:Power
-
-        if self.ftt_run:
+        # Setup FTT:Power (solves the years before MSET starts)
+    
+        if self.ftt_p_run:
             from SourceCode.ftt_power import run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
             self._run_ftt_year = run_ftt_year
@@ -387,6 +395,11 @@ class ModelRun:
                 # Convert mUSD 2023 to th USD 2019 (MSET investment units)
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
+        # Setup FTT:Transport (solves the years before MSET starts)
+        # Unlike for FTT-P, the year loop is delegated to setup_ftt_transport
+        if self.ftt_tr_run:
+            from SourceCode.ftt_transport import setup_ftt_transport
+            setup_ftt_transport(self)
 
         #%%
         
@@ -1067,10 +1080,15 @@ class ModelRun:
         energy_change = ener_base
         
     
-        if self.ftt_run:
+        if self.ftt_p_run:
             ## FTT: Power
             ftt_model = self._run_ftt_year(self, year, ftt_model, Scenario, ener_base,
                                            IO_model, self.model_start, self.model_end)
+
+        if self.ftt_tr_run:
+            ## FTT: Transport (own FTT run; its effect on households is applied later, on household_consumption)
+            from SourceCode.ftt_transport import solve_year_ftt_transport
+            solve_year_ftt_transport(self, year, DYNAMIC, Scenario)
                 
         ## EMISSIONS
     
@@ -1228,6 +1246,12 @@ class ModelRun:
         
         # ! NO NEGATIVE VALUES
         dyn_hh_cons['VIPA'] = dyn_hh_cons['VIPA'].apply(lambda x: x if x > 0.0 else 0.0) 
+
+        if self.ftt_tr_run:
+            from SourceCode.ftt_transport import apply_household_consumption, export_ftt_transport_results
+            dyn_hh_cons = apply_household_consumption(self, year, dyn_hh_cons)
+            if self.ftt_tr_model is not None and year == self.model_end:
+                export_ftt_transport_results(self.ftt_tr_model)
         self.V.write_var('household_consumption', year, dyn_hh_cons.reset_index().rename(columns={'VIPA':'household_consumption'}), from_df=True)
     
         print("--- 4.2.2 DYNAMICS - consumption: %s seconds ---" % round(time.time() - module_time, 1))
@@ -1525,7 +1549,7 @@ class ModelRun:
         # ^ INDUCED INVESTMENT
         # ^ induced investment is lagged one year, i.e. only appears in the year following it's being induced
         # Final demand from investment for capital good in next year
-        if self.ftt_run:
+        if self.ftt_p_run:
             if year > 2025:
                 # Add FTT investment final demand here, but first regionally distribute investment
                 # Use the distribution from INV_model.investment_induced in the electricity sector to share 
@@ -1591,7 +1615,7 @@ class ModelRun:
         # investment['dk'] = investment['dk_induced'] + investment['dk_exog'] + investment['dk_recyc'] + investment['dk_base'] # NOT USED
         investment['dk_base_new'] = investment['dk_induced'] + investment['dk_base'] + investment['dk_recyc']
         # investment in the period that we need to add to capital stock
-        if self.ftt_run:
+        if self.ftt_p_run:
             # if (ftt_model.investment[year - 1].sum() > 0):
             if year > 2025:
                 # Set electricity sector investment to 0, final demand of elec investment is added to induced investment
@@ -1716,7 +1740,7 @@ class ModelRun:
         print("--- 4.2.7 DYNAMICS - Govt: %s seconds ---" % round(time.time() - module_time, 1))
     
         # Add FTT investment to investment variable and its lag here
-        if self.ftt_run:
+        if self.ftt_p_run:
             # if ftt_model.investment[year - 1].sum() > 0:
             if year > 2025:
                 # Investment from previous year
