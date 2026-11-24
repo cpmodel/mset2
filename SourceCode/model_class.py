@@ -350,8 +350,8 @@ class ModelRun:
         #endregion
         
         #%%
-        # Setup FTT:Power
-
+        # Setup FTT:Power (solves the years before MSET starts)
+    
         if self.ftt_p_run:
             from SourceCode.ftt_power import run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
@@ -395,7 +395,8 @@ class ModelRun:
                 # Convert mUSD 2023 to th USD 2019 (MSET investment units)
                 self.ftt_model.investment[year] = self.ftt_model.investment[year] * FTT_INVESTMENT_TO_TH_USD
 
-        # Setup FTT:Transport (own FTT run; solves the years before MSET starts)
+        # Setup FTT:Transport (solves the years before MSET starts)
+        # Unlike for FTT-P, the year loop is delegated to setup_ftt_transport
         if self.ftt_tr_run:
             from SourceCode.ftt_transport import setup_ftt_transport, solve_year_ftt_transport, apply_household_consumption
             self._solve_year_ftt_tr = solve_year_ftt_transport

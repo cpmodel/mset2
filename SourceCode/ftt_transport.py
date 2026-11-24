@@ -36,39 +36,63 @@ UTIL = Path('MINDSET_FTT_Power') / 'Utilities'
 
 # ------------------------------------------------------------------ setup
 def setup_ftt_transport(mset):
-    """Build the FTT-Tr run, its region map and converters, and solve the years before MSET starts."""
+    """
+    Build the FTT-Tr run, its region map and converters, and solve the years 
+    before MSET starts. This is required because FTT requires its run to start
+    before MSET typically does.    
+    
+    Args:
+        mset: MSET ModelRun instance
+        
+    Returns:
+        None. The FTT-Tr run is stored in mset.ftt_tr_model for later use.
+    
+    """
     from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as FTTRun
 
     tr = FTTRun(model_end=mset.model_end, settings_path=mset.ftt_tr_settings)
     tr.ftt_start = min(tr.timeline)
 
-    ftt_codes = list(tr.titles['RTI_short'])
-    mset_codes = list(mset.EXOG_VARS.R_list)
+    ftt_region_codes = list(tr.titles['RTI_short'])
+    mset_region_codes = list(mset.EXOG_VARS.R_list)
     if mset.ftt_tr_region_mode == 'identity':
-        tr.region_map = RegionMap.identity(ftt_codes, mset_codes)
+        # Use the same codes for MSET and FTT-Tr, so no crosswalk is needed.
+        tr.region_map = RegionMap.identity(ftt_region_codes, mset_region_codes)
     else:
-        tr.region_map = RegionMap.from_crosswalk(mset.ftt_tr_crosswalk, ftt_codes, mset_codes)
+        # Else use the crosswalk to map FTT-Tr regions to MSET regions
+        tr.region_map = RegionMap.from_crosswalk(
+            mset.ftt_tr_crosswalk, ftt_region_codes, mset_region_codes
+            )
 
+    # Read the fuel mapping, and store in the FTT-Tr run.
+    # Note: gas, biofuels, and hydrogen remain unmapped to MSET
     fuels = pd.read_csv(UTIL / 'ftt_tr_to_mindset_fuels.csv').dropna(subset=['TRAD_COMM'])
     fuels['TRAD_COMM'] = fuels['TRAD_COMM'].astype(int)
     tr.fuel_map = fuels                                    # JTI -> MSET commodity
     tr.carbon_fuel_comm = [c for c in fuels['TRAD_COMM'] if c != 93]   # carbon price = household rate on liquid fuels
 
+    # Read the fuel prices mapping, and store in the FTT-Tr run.
     prices = pd.read_csv(UTIL / 'ftt_tr_fuel_price_mapping.csv').dropna(subset=['TRAD_COMM'])
     prices['TRAD_COMM'] = prices['TRAD_COMM'].astype(int)
     tr.price_map = prices                                  # PFRx -> MSET commodity
-    tr.price_index = {v: np.ones(len(ftt_codes)) for v in prices['PFR_var']}
+    tr.price_index = {v: np.ones(len(ftt_region_codes)) for v in prices['PFR_var']}
     tr.signals = {}
+    # Whether or not to adjust household fuel consumption to follow output of FTT-Tr
     tr.couple_household_energy = mset.ftt_tr_couple_household_energy
 
+    # Run FTT-Tr for the years before MSET starts to have its outputs ready for the first MSET year.
     for y, year in enumerate(np.arange(tr.ftt_start, min(mset.years))):
         _solve_and_store(tr, year, y)
 
     _report_coverage(tr, year=min(mset.years))
+    
+    # Store the FTT-Tr run in the MSET model for later use.
     mset.ftt_tr_model = tr
 
 
 def _solve_and_store(tr, year, y):
+    """Run FTT-Tr for a given year and store its outputs in the run's output arrays."""
+    
     tr.variables, tr.lags = tr.solve_year(year, y, tr.scenarios)
     out = tr.output[tr.scenarios]
     for var, val in tr.variables.items():
