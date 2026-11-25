@@ -98,7 +98,6 @@ import warnings
 #endregion
 
 
-
 class ModelRun:
     """
     Class to run the MINDSET model.
@@ -225,7 +224,8 @@ class ModelRun:
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = config.getboolean('settings', 'CALIBRATING')
         self.ftt_run = config.getboolean('settings', 'ftt_run')
-
+        self.ftt_p_scenario = config.get('settings', 'ftt_p_scenario',
+                                         fallback='S0').strip()
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
         self.COND_TRADE = int(config.get('settings','COND_TRADE')) / 100
@@ -336,8 +336,6 @@ class ModelRun:
                         .rename(columns={'target-sector':'PROD_COMM','target-country-iso3':'REG_imp'}).drop(columns=['target-country'])
         
         
-
-        
         #endregion
         #endregion
         
@@ -345,12 +343,16 @@ class ModelRun:
         # Setup FTT:Power
 
         if self.ftt_run:
-            from SourceCode.ftt_power import run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
+            from SourceCode.ftt_power import _validate_ftt_p_scenario, run_ftt_year, ftt_investment_by_mrio_sector, FTT_INVESTMENT_TO_TH_USD
             from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as ftt
+            _validate_ftt_p_scenario(self.ftt_p_scenario)
             self._run_ftt_year = run_ftt_year
 
             # Instantiate the run
-            self.ftt_model = ftt(model_end=self.model_end)
+            self.ftt_model = ftt(
+                model_end=self.model_end,
+                scenario=self.ftt_p_scenario,
+            )
 
             # Call solve_year method for each year while MINDSET is not started
             self.ftt_model.ftt_start = min(self.ftt_model.timeline)

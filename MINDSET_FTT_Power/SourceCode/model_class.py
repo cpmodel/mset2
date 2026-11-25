@@ -4,7 +4,7 @@
 model_class.py
 =========================================
 
-Model Class file for FTT Stand alone.
+Model Class file for MSET-coupled FTT:Power.
 
 
 ModelRun class: main class for operation of model.
@@ -86,7 +86,7 @@ class ModelRun:
 
     """
 
-    def __init__(self, model_end):
+    def __init__(self, model_end, scenario):
         """ Instantiate model run object
 
         model_end: int. Final year of the run, supplied by MSET scenario file
@@ -107,7 +107,7 @@ class ModelRun:
         self.years = np.arange(self.model_start, self.model_end+1)
         self.timeline = np.arange(self.simulation_start, self.simulation_end+1)
         self.ftt_modules = config.get('settings', 'enable_modules')
-        self.scenarios = config.get('settings', 'scenarios')
+        self.scenarios = scenario
 
         # Point FTT_Standalone at MINDSET's Utilities and settings (once at startup)
         set_paths(utilities_path=str(_mindset_root / 'Utilities'))
