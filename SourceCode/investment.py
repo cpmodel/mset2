@@ -32,6 +32,8 @@ class invest:
         Calculates fixed capital formation share relative to exports by region.
     calc_dy_inv_induced
         Calculates induced investment.
+    apply_ftt_change_to_electricity_investment
+        Replaces electricity-sector induced investment changes with FTT changes.
     calc_dy_inv_recyc
         Calculates investment from revenue recycling.
     calc_dy_inv_exog
@@ -268,6 +270,144 @@ class invest:
             return adjustment_factor
         else:
             return True
+
+    def apply_ftt_change_to_electricity_investment(
+        self,
+        previous_ftt,
+        current_ftt,
+        dk_base,
+        intermediate_flows,
+        previous_applied_investment=None,
+    ):
+        """Apply FTT changes to induced investment by electricity sector 93.
+
+        REG_imp is the investor region, PROD_COMM the investing sector,
+        TRAD_COMM the investment good, and REG_exp the supplier region.
+        """
+        previous_ftt = previous_ftt.reindex(
+            index=self.R_list, columns=self.P_list, fill_value=0,
+        ).astype(float)
+        current_ftt = current_ftt.reindex(
+            index=self.R_list, columns=self.P_list, fill_value=0,
+        ).astype(float)
+        mset_electricity_base = dk_base.loc[
+            pd.to_numeric(dk_base['PROD_COMM'], errors='coerce') == 93,
+            ['REG_imp', 'dk_base'],
+        ].groupby('REG_imp')['dk_base'].sum(min_count=1).reindex(self.R_list)
+        if not (
+            np.isfinite(previous_ftt.to_numpy()).all()
+            and np.isfinite(current_ftt.to_numpy()).all()
+            and np.isfinite(mset_electricity_base.to_numpy()).all()
+        ):
+            raise ValueError("FTT/MSET investment inputs must be finite and complete")
+
+        previous_ftt_total = previous_ftt.sum(axis=1)
+        mset_scale = mset_electricity_base.div(
+            previous_ftt_total.where(previous_ftt_total != 0)
+        ).fillna(1.0)
+        if previous_applied_investment is None:
+            previous_applied_investment = previous_ftt.mul(mset_scale, axis=0)
+        else:
+            previous_applied_investment = previous_applied_investment.reindex(
+                index=self.R_list, columns=self.P_list, fill_value=0,
+            ).astype(float)
+
+        # MSET sets the regional scale; FTT sets the product mix.
+        scaled_ftt_investment = current_ftt.mul(mset_scale, axis=0)
+        no_previous_ftt_investment = previous_ftt_total == 0
+        # With no previous FTT investment, apply its absolute change.
+        scaled_ftt_investment.loc[no_previous_ftt_investment] = (
+            previous_applied_investment.loc[no_previous_ftt_investment]
+            + current_ftt.loc[no_previous_ftt_investment]
+            - previous_ftt.loc[no_previous_ftt_investment]
+        )
+        product_changes_matrix = scaled_ftt_investment - previous_applied_investment
+
+        product_changes = (
+            product_changes_matrix.rename_axis(index='REG_imp', columns='TRAD_COMM')
+            .stack()
+            .rename('dy')
+            .reset_index()
+        )
+        product_changes = product_changes.loc[product_changes['dy'] != 0].copy()
+        changes_by_supplier = self._allocate_product_changes_to_suppliers(
+            product_changes, intermediate_flows,
+        )
+        # PROD_COMM is the investing sector; TRAD_COMM is the investment good.
+        columns = ['REG_imp', 'PROD_COMM', 'REG_exp', 'TRAD_COMM', 'dy']
+        other_investors = self.investment_induced.loc[
+            pd.to_numeric(self.investment_induced['PROD_COMM'], errors='coerce') != 93,
+            columns,
+        ]
+        electricity_investment = changes_by_supplier.assign(PROD_COMM=93)[columns]
+        self.investment_induced = pd.concat(
+            [other_investors, electricity_investment], ignore_index=True,
+        )
+        self.dy_inv_induced = self.investment_induced.groupby(
+            ['REG_exp', 'TRAD_COMM', 'REG_imp'], as_index=False,
+        )['dy'].sum()
+        return scaled_ftt_investment
+
+    def _allocate_product_changes_to_suppliers(self, product_changes, intermediate_flows):
+        if product_changes.empty:
+            return pd.DataFrame(columns=['REG_imp', 'REG_exp', 'TRAD_COMM', 'dy'])
+
+        supplier_shares = self.fcf_share[
+            ['REG_imp', 'TRAD_COMM', 'REG_exp', 'FCF_share']
+        ]
+        changes_by_supplier = product_changes.merge(
+            supplier_shares, how='left', on=['REG_imp', 'TRAD_COMM'],
+        )
+        supplier_share_totals = changes_by_supplier.groupby(
+            ['REG_imp', 'TRAD_COMM']
+        )['FCF_share'].sum()
+        missing_supplier_groups = supplier_share_totals.index[
+            np.isclose(supplier_share_totals.to_numpy(), 0.0)
+        ].to_frame(index=False)
+        if not missing_supplier_groups.empty:
+            # Use other sectors' purchases when FCF has no supplier split.
+            missing_group_changes = product_changes.merge(
+                missing_supplier_groups, how='inner', on=['REG_imp', 'TRAD_COMM'],
+            )
+            fallback_flows = intermediate_flows.reset_index()
+            fallback_flows = fallback_flows.loc[
+                pd.to_numeric(fallback_flows['PROD_COMM'], errors='coerce') != 93
+            ]
+            fallback_flows = fallback_flows.groupby(
+                ['REG_imp', 'TRAD_COMM', 'REG_exp'], as_index=False,
+            )['z_bp'].sum()
+            fallback_flows['FCF_share'] = fallback_flows['z_bp'] / fallback_flows.groupby(
+                ['REG_imp', 'TRAD_COMM']
+            )['z_bp'].transform('sum')
+            fallback_allocations = missing_group_changes.merge(
+                fallback_flows[['REG_imp', 'TRAD_COMM', 'REG_exp', 'FCF_share']],
+                how='left', on=['REG_imp', 'TRAD_COMM'],
+            )
+            changes_by_supplier = changes_by_supplier.merge(
+                missing_supplier_groups.assign(_use_fallback=True),
+                how='left', on=['REG_imp', 'TRAD_COMM'],
+            )
+            changes_by_supplier = changes_by_supplier.loc[
+                changes_by_supplier['_use_fallback'].isna()
+            ].drop(
+                columns='_use_fallback',
+            )
+            changes_by_supplier = pd.concat(
+                [changes_by_supplier, fallback_allocations], ignore_index=True,
+            )
+
+        supplier_share_values = changes_by_supplier['FCF_share'].to_numpy(dtype=float)
+        allocated_share_totals = changes_by_supplier.groupby(
+            ['REG_imp', 'TRAD_COMM']
+        )['FCF_share'].sum()
+        if (
+            not np.isfinite(supplier_share_values).all()
+            or (supplier_share_values < 0).any()
+            or not np.isclose(allocated_share_totals, 1.0).all()
+        ):
+            raise ValueError("Cannot allocate FTT investment changes to suppliers")
+        changes_by_supplier['dy'] *= changes_by_supplier['FCF_share']
+        return changes_by_supplier[['REG_imp', 'REG_exp', 'TRAD_COMM', 'dy']]
 
     def calc_dy_inv_recyc(self, recyc_rev, price_index_):
         # price_index is vector
