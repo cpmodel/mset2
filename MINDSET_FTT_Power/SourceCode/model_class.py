@@ -4,7 +4,7 @@
 model_class.py
 =========================================
 
-Model Class file for FTT Stand alone.
+Model Class file for MSET-coupled FTT:Power.
 
 
 ModelRun class: main class for operation of model.
@@ -87,7 +87,7 @@ class ModelRun:
 
     """
 
-    def __init__(self, model_end, settings_path=None):
+    def __init__(self, model_end, scenario, settings_path=None):
         """ Instantiate model run object
         Args:
             model_end: int. Final year of the run, supplied by MSET scenario file
@@ -113,7 +113,7 @@ class ModelRun:
         self.years = np.arange(self.model_start, self.model_end+1)
         self.timeline = np.arange(self.simulation_start, self.simulation_end+1)
         self.ftt_modules = config.get('settings', 'enable_modules')
-        self.scenarios = config.get('settings', 'scenarios')
+        self.scenarios = scenario
 
         # Point FTT_Standalone at this run's Utilities and settings. ftt_source.paths is global,
         # so solve_year() re-applies it when several runs (e.g. Power at 10 regions, Transport

@@ -51,6 +51,14 @@ def _normalise_t2ti_name(name):
     """Remove a leading numeric label and separator from an FTT technology name."""
     return re.sub(r'^\s*\d+\s*[.\-:]?\s*', '', str(name))
 
+def _validate_ftt_p_scenario(scenario_name):
+    """Ensure that the FTT:Power scenario name is a single, non-empty string."""
+    if not scenario_name:
+        raise ValueError("The 'ftt_p_scenario' setting must not be empty when FTT:Power is enabled.")
+    if ',' in scenario_name:
+        raise ValueError("MSET-coupled FTT:Power supports one scenario; do not use a comma-separated list.")
+
+
 
 def ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx):
     """

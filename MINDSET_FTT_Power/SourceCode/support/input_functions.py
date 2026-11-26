@@ -16,6 +16,7 @@ Functions included:
 # Standard library imports
 import os
 import copy
+import logging
 import warnings
 
 # Third party imports
@@ -83,6 +84,12 @@ def load_data(titles, dimensions, timeline, scenarios, ftt_modules, forstart,
     for scen in data:
         if scen != 'S0':
             data[scen] = copy.deepcopy(data['S0'])
+            scenario_directory = os.path.join('MINDSET_FTT_Power', 'Inputs', scen)
+            if not os.path.isdir(scenario_directory):
+                logging.getLogger(__name__).warning(
+                    "FTT:Power scenario '%s' has no input directory; using S0 inputs.",
+                    scen,
+                )
 
 
         for ftt in modules_enabled:

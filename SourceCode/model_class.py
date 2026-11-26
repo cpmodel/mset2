@@ -97,7 +97,6 @@ import warnings
 #endregion
 
 
-
 class ModelRun:
     """
     Class to run the MINDSET model.
@@ -224,6 +223,8 @@ class ModelRun:
         self.bta = int(config.get('settings', 'bta'))
         self.CALIBRATING = config.getboolean('settings', 'CALIBRATING')
         self.ftt_p_run = config.getboolean('settings', 'ftt_p_run', fallback=False)
+        self.ftt_p_scenario = config.get('settings', 'ftt_p_scenario',
+                                         fallback='S0').strip()
         # FTT:Transport, run at its own regions and coupled through a live region map
         # (SourceCode/ftt_transport.py). All optional; off by default.
         self.ftt_tr_run = config.getboolean('settings', 'ftt_tr_run', fallback=False)
@@ -344,8 +345,6 @@ class ModelRun:
                         .rename(columns={'target-sector':'PROD_COMM','target-country-iso3':'REG_imp'}).drop(columns=['target-country'])
         
         
-
-        
         #endregion
         #endregion
         
@@ -358,6 +357,7 @@ class ModelRun:
         if self.ftt_tr_run:
             from SourceCode.ftt_transport import setup_ftt_transport
             setup_ftt_transport(self)
+
 
         #%%
         
