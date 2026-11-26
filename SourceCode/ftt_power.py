@@ -94,8 +94,11 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
                             n_regions, n_techs, region_codes):
     """Set trade-weighted fuel-price changes on the FTT model after 2019.
     
-    NOTE: This is not verified and will be adjusted in a future PR that focuses
-    on the MSET -> FTT feedback.
+    Limitations:
+        - Nuclear receives no fuel-price change: its fuel sector (29) is not in
+          ftt_to_mindset_fuels.csv, so no trade flows are selected for it.
+        - Exporter prices are weighted by the fuel purchases of all sectors in
+          the importing region, not only those of the power sector (93).
 
     Args:
         self: MSET model providing price changes through its variable table.
