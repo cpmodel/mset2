@@ -95,7 +95,7 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
     """Set trade-weighted fuel-price changes on the FTT model after 2019.
     
     NOTE: This is not verified and will be adjusted in a future PR that focuses
-    on the FTT -> MSET feedback.
+    on the MSET -> FTT feedback.
 
     Args:
         self: MSET model providing price changes through its variable table.
@@ -108,10 +108,8 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
         
     """
 
-    # fuel_price_index_change is stored on the model object (_mset_fuel_price_index_change)
-    # rather than in the FTT input dict, so no change to FTT_Standalone's VariableListing.csv
-    # is needed. model_class.py converts _mset_fuel_price_index_change to FPIX and injects it
-    # into variables before calling ftt_p_solve each year.
+    # fuel_price_index_change is stored on the model object (_mset_fuel_price_index_change).
+    # model_class.py accumulates it into the cumulative FPIX before calling ftt_p_solve each year.
     if year > 2019:
         # Assess price changes by FTT fuels.
         # delta_price_yoy contains year-on-year price changes.
@@ -125,11 +123,12 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
         fuel_price_changes_by_exporter = domestic_price_changes.loc[
             domestic_price_changes.PROD_COMM.isin(ftt_model.ftt_tech_converter.PROD_COMM)
         ].copy()
+        # Match each fuel trade to the exporter's price change for that same fuel.
         merged_fuel_prices = pd.merge(
             fuel_trade_flows.reset_index(),
             fuel_price_changes_by_exporter,
-            left_on='REG_exp',
-            right_on='REG_imp',
+            left_on=['REG_exp', 'TRAD_COMM'],
+            right_on=['REG_imp', 'PROD_COMM'],
             how='inner',
             suffixes=('', '_y')
         )
@@ -139,8 +138,10 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
 
         for tech, sectors in ftt_model.ftt_tech_converter.groupby('T2TI'):
             sector_price_changes = merged_fuel_prices.loc[
-                merged_fuel_prices.PROD_COMM.isin(sectors.PROD_COMM)
+                merged_fuel_prices.TRAD_COMM.isin(sectors.PROD_COMM)
             ]
+            if sector_price_changes.empty:
+                continue  # No traded fuel mapped to this technology; its change stays 0
             weighted_price_change = (
                 sector_price_changes.groupby("REG_imp", group_keys=False, dropna=False)
                 .apply(
