@@ -228,6 +228,8 @@ class ModelRun:
         # FTT:Transport, run at its own regions and coupled through a live region map
         # (SourceCode/ftt_transport.py). All optional; off by default.
         self.ftt_tr_run = config.getboolean('settings', 'ftt_tr_run', fallback=False)
+        self.ftt_tr_scenario = config.get('settings', 'ftt_tr_scenario',
+                                           fallback='S0').strip()
         self.ftt_tr_settings = config.get('settings', 'ftt_tr_settings', fallback='MINDSET_FTT_Power/settings_transport.ini')
         self.ftt_tr_region_mode = config.get('settings', 'ftt_tr_region_mode', fallback='crosswalk')  # crosswalk | identity
         self.ftt_tr_crosswalk = config.get('settings', 'ftt_tr_crosswalk', fallback='MINDSET_FTT_Power/Utilities/ftt71_to_ipcc10_crosswalk.csv')

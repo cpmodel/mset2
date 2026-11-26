@@ -50,7 +50,13 @@ def setup_ftt_transport(mset):
     """
     from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as FTTRun
 
-    ftt_model = FTTRun(model_end=mset.model_end, scenario='S0',
+    scenario = mset.ftt_tr_scenario
+    if not scenario:
+        raise ValueError("The 'ftt_tr_scenario' setting must not be empty when FTT:Transport is enabled.")
+    if ',' in scenario:
+        raise ValueError("MSET-coupled FTT:Transport supports one scenario; do not use a comma-separated list.")
+
+    ftt_model = FTTRun(model_end=mset.model_end, scenario=scenario,
                        settings_path=mset.ftt_tr_settings)
     ftt_model.ftt_start = min(ftt_model.timeline)
 

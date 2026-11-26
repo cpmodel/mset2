@@ -84,11 +84,26 @@ def load_data(titles, dimensions, timeline, scenarios, ftt_modules, forstart,
     for scen in data:
         if scen != 'S0':
             data[scen] = copy.deepcopy(data['S0'])
-            scenario_directory = os.path.join('MINDSET_FTT_Power', 'Inputs', scen)
-            if not os.path.isdir(scenario_directory):
+        scenario_directory = os.path.join(data_root, 'Inputs', scen)
+        scenario_has_csvs = any(
+            os.path.isdir(module_directory) and any(
+                filename.lower().endswith('.csv')
+                for filename in os.listdir(module_directory)
+            )
+            for module_directory in (
+                os.path.join(scenario_directory, module) for module in modules_enabled
+            )
+        )
+        if not scenario_has_csvs:
+            if scen == 'S0':
                 logging.getLogger(__name__).warning(
-                    "FTT:Power scenario '%s' has no input directory; using S0 inputs.",
-                    scen,
+                    "FTT baseline scenario 'S0' has no input CSVs under '%s'; input arrays remain at defaults.",
+                    scenario_directory,
+                )
+            else:
+                logging.getLogger(__name__).warning(
+                    "FTT scenario '%s' has no input CSVs under '%s'; using S0 inputs.",
+                    scen, scenario_directory,
                 )
 
 
