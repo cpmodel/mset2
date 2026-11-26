@@ -226,6 +226,9 @@ class ModelRun:
         self.ftt_run = config.getboolean('settings', 'ftt_run')
         self.ftt_p_scenario = config.get('settings', 'ftt_p_scenario',
                                          fallback='S0').strip()
+        # The year from which FTT investment is added to MSET investment.
+        self.ftt_p_inv_start = int(config.get('settings', 'ftt_p_inv_start', 
+                                              fallback='2026'))
         self.COND_LABOR = int(config.get('settings','COND_LABOR')) / 100
         self.COND_TAX = int(config.get('settings','COND_TAX')) / 100
         self.COND_TRADE = int(config.get('settings','COND_TRADE')) / 100
@@ -1528,7 +1531,7 @@ class ModelRun:
         # ^ induced investment is lagged one year, i.e. only appears in the year following it's being induced
         # Final demand from investment for capital good in next year
         if self.ftt_run:
-            if year > 2025:
+            if year >= self.ftt_p_inv_start:
                 # Add FTT investment final demand here, but first regionally distribute investment
                 # Use the distribution from INV_model.investment_induced in the electricity sector to share 
                 # capital goods across REG_exp
@@ -1595,7 +1598,7 @@ class ModelRun:
         # investment in the period that we need to add to capital stock
         if self.ftt_run:
             # if (ftt_model.investment[year - 1].sum() > 0):
-            if year > 2025:
+            if year >= self.ftt_p_inv_start:
                 # Set electricity sector investment to 0, final demand of elec investment is added to induced investment
                 electr_investment = investment.loc[investment.PROD_COMM == 93, 'dk_base_new'].copy()
                 investment.loc[investment.PROD_COMM == 93, 'dk_base_new'] = 0
@@ -1720,7 +1723,7 @@ class ModelRun:
         # Add FTT investment to investment variable and its lag here
         if self.ftt_run:
             # if ftt_model.investment[year - 1].sum() > 0:
-            if year > 2025:
+            if year >= self.ftt_p_inv_start:
                 # Investment from previous year
                 electr_investment0 = self.V.read_var('dk_base', year, as_df=True, indexed=True)
                 electr_investment0 = electr_investment0.reset_index().loc[electr_investment0.reset_index().PROD_COMM == 93]
