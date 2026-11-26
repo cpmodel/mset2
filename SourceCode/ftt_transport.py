@@ -50,7 +50,8 @@ def setup_ftt_transport(mset):
     """
     from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as FTTRun
 
-    ftt_model = FTTRun(model_end=mset.model_end, settings_path=mset.ftt_tr_settings)
+    ftt_model = FTTRun(model_end=mset.model_end, scenario='S0',
+                       settings_path=mset.ftt_tr_settings)
     ftt_model.ftt_start = min(ftt_model.timeline)
 
     ftt_region_codes = list(ftt_model.titles['RTI_short'])

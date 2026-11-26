@@ -24,7 +24,8 @@ def setup_ftt_power(mset):
     """Build the FTT-Power run and solve the years before MSET starts."""
     from MINDSET_FTT_Power.SourceCode.model_class import ModelRun as FTTRun
 
-    mset.ftt_model = FTTRun(model_end=mset.model_end)
+    _validate_ftt_p_scenario(mset.ftt_p_scenario)
+    mset.ftt_model = FTTRun(model_end=mset.model_end, scenario=mset.ftt_p_scenario)
     ftt_model = mset.ftt_model
     ftt_model.ftt_start = min(ftt_model.timeline)
     setup_years = np.arange(ftt_model.ftt_start, min(mset.years))
