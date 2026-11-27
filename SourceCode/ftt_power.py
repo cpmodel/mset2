@@ -12,6 +12,7 @@ import numpy as np
 import re
 from pathlib import Path
 import pickle
+import logging
 
 # MWIY is in mUSD(2023). Convert to th USD 2019, the unit of MSET's investment variables.
 # CPI taken from US Bureau of Labor Statistics, CPI for All Urban Consumers (CPI-U)
@@ -44,7 +45,7 @@ def ftt_investment_by_mrio_sector(ftt_model, ftt_yr_idx):
         investment_by_mrio_sector (np.ndarray): array of shape (n_reg, n_mrio_sectors)
     
     """
-    investment_by_tech = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, 0, ftt_yr_idx]
+    investment_by_tech = ftt_model.output[ftt_model.scenarios]['MWIY'][:, :, ftt_yr_idx]
     converter_cols = list(ftt_model.ftt_inv_converter.columns)
     converter_keys = [_normalise_t2ti_name(name) for name in converter_cols]
     title_keys = [_normalise_t2ti_name(name) for name in ftt_model.titles['T2TI']]
@@ -85,8 +86,8 @@ def set_electricity_demand(ftt_model, ener_base, ftt_yr_idx, region_codes):
     elec_idx = ftt_model.titles['JTI'].index('8 Electricity')
     # Assign electricity demand to FTT
     elec_demand_vals = elec_demand_pj[region_codes].values
-    ftt_model.input[ftt_scenario]['MEWD'][:, elec_idx, 0, ftt_yr_idx] = elec_demand_vals
-    ftt_model.input[ftt_scenario]['MEWDX'][:, elec_idx, 0, ftt_yr_idx] = elec_demand_vals
+    ftt_model.input[ftt_scenario]['MEWD'][:, elec_idx, ftt_yr_idx] = elec_demand_vals
+    ftt_model.input[ftt_scenario]['MEWDX'][:, elec_idx, ftt_yr_idx] = elec_demand_vals
 
 
 
@@ -137,7 +138,7 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
         )
 
         # Year-on-year fractional change in fuel price per (region, T2TI technology); feeds FTT's cumulative FPIX.
-        fuel_price_index_change = np.zeros((n_regions, n_techs, 1))
+        fuel_price_index_change = np.zeros((n_regions, n_techs))
 
         for tech, sectors in ftt_model.ftt_tech_converter.groupby('T2TI'):
             sector_price_changes = merged_fuel_prices.loc[
@@ -156,49 +157,46 @@ def set_fuel_price_changes(self, year, ftt_model, IO_model,
             )
             technology_idx = ftt_model.titles['T2TI'].index(tech)
             weighted_price_change = weighted_price_change.reindex(region_codes).fillna(0.0)
-            fuel_price_index_change[:, technology_idx, 0] = weighted_price_change.values
+            fuel_price_index_change[:, technology_idx] = weighted_price_change.values
 
         ftt_model._mset_fuel_price_index_change = fuel_price_index_change
 
 
 
-def set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes):
-    """Map MSET power-sector carbon prices to FTT regions and technologies.
+def set_carbon_prices(ftt_model, Scenario, region_codes):
+    """Map power-sector carbon prices to FTT's regional USD2023/tCO2 prices.
 
-    A nonzero mapping is stored on the FTT model; an all-zero mapping leaves
-    any existing override unchanged.
-
-    Args:
-        ftt_model: FTT model receiving the carbon-price array.
-        Scenario: Scenario providing carbon prices in tax_rate.
-        n_regions (int): Number of FTT regions.
-        n_techs (int): Number of FTT technologies.
-        region_codes (list): FTT region codes in output-array order.
+    Average exporter entries within each fuel first, then average the explicitly
+    specified fuels equally. Warn if fuel prices differ within a region.
+    An all-zero MSET policy leaves the FTT scenario price in control.
     """
-
-    # Carbon price: per-(region, technology) ctax in USD 2019/tCO2, converted to USD 2023.
-    power_carbon_prices = Scenario.tax_rate.loc[Scenario.tax_rate.PROD_COMM == 93].copy()
-    reppx_array = np.zeros((n_regions, n_techs, 1))
-    # Fuel-to-technology index mapping is cached on ftt_model at init (model_class.py); static across years.
-    for fuel_type, sectors in ftt_model.ftt_fuel_converter.groupby('ERTI'):
-        if fuel_type not in ftt_model.fuel_to_tech_idxs:
-            continue
-        sector_carbon_prices = power_carbon_prices.loc[
-            power_carbon_prices.TRAD_COMM.isin(sectors.TRAD_COMM)
-        ]
-        if len(sector_carbon_prices) == 0:
-            continue
-        avg_carbon_price_by_region = sector_carbon_prices.groupby('REG_imp')['ctax'].mean()
-        avg_carbon_price_by_region = avg_carbon_price_by_region * USD_2019_TO_USD_2023
-        for technology_idx in ftt_model.fuel_to_tech_idxs[fuel_type]:
-            for region_idx, region_code in enumerate(region_codes):
-                if region_code in avg_carbon_price_by_region.index:
-                    reppx_array[region_idx, technology_idx, 0] = (
-                        avg_carbon_price_by_region[region_code]
-                    )
-    # If the mapped prices are all zero, leave _mset_reppx unset (no MSET override).
-    if np.any(reppx_array != 0):
-        ftt_model._mset_reppx = reppx_array
+    fuels = ftt_model.ftt_fuel_converter.TRAD_COMM
+    fuels = fuels[fuels != 93]
+    power_carbon_prices = Scenario.tax_rate.loc[
+        (Scenario.tax_rate.PROD_COMM == 93)
+        & Scenario.tax_rate.TRAD_COMM.isin(fuels)
+        & Scenario.tax_rate.REG_imp.isin(region_codes)
+    ]
+    if power_carbon_prices.empty:
+        ftt_model._mset_reppx = None
+        return
+    fuel_prices = power_carbon_prices.groupby(['REG_imp', 'TRAD_COMM']).ctax.mean()
+    regional_prices = fuel_prices.groupby(level='REG_imp').agg(['min', 'max', 'mean'])
+    differing = regional_prices.loc[
+        ~np.isclose(regional_prices['min'], regional_prices['max'])
+    ]
+    if not differing.empty:
+        logging.getLogger(__name__).warning(
+            "FTT:Power requires one carbon price per region, but prices differ "
+            "across fuels in %s. Using the unweighted mean of specified fuel "
+            "prices (USD2019/tCO2): %s.",
+            ', '.join(map(str, differing.index)), differing['mean'].to_dict(),
+        )
+    prices = (
+        regional_prices['mean'].reindex(region_codes).fillna(0.0).to_numpy()
+        * USD_2019_TO_USD_2023
+    )
+    ftt_model._mset_reppx = prices if np.any(prices != 0) else None
 
 
 def apply_fuel_demand_feedback(self, year, ftt_model, ftt_yr_idx,
@@ -229,8 +227,8 @@ def apply_fuel_demand_feedback(self, year, ftt_model, ftt_yr_idx,
             previous_yr_energy_flows.PROD_COMM == 93
         ].copy()
         # Get primary energy demand values for t and t-1
-        current_ftt_energy_demand = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, ftt_yr_idx]
-        previous_ftt_energy_demand = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, 0, ftt_yr_idx - 1]
+        current_ftt_energy_demand = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, ftt_yr_idx]
+        previous_ftt_energy_demand = ftt_model.output[ftt_model.scenarios]['MEPD'][:, :, ftt_yr_idx - 1]
         # Read current-year energy_flows once, apply all sector updates in place,
         # and write the table once after the loop.
         energy_flows_by_idx = (
@@ -349,21 +347,13 @@ def run_ftt_year(self, year, ftt_model, Scenario, ener_base,
     set_fuel_price_changes(
         self, year, ftt_model, IO_model, n_regions, n_techs, region_codes
     )
-    set_carbon_prices(ftt_model, Scenario, n_regions, n_techs, region_codes)
+    set_carbon_prices(ftt_model, Scenario, region_codes)
 
     # Solve FTT for the current year and store results in ftt_model.output
     ftt_model.variables, ftt_model.lags = ftt_model.solve_year(
         year, ftt_yr_idx, ftt_model.scenarios
     )
-    for variable_name in ftt_model.variables:
-        if 'TIME' in ftt_model.dims[variable_name]:
-            ftt_model.output[ftt_model.scenarios][variable_name][
-                :, :, :, ftt_yr_idx
-            ] = ftt_model.variables[variable_name]
-        else:
-            ftt_model.output[ftt_model.scenarios][variable_name][
-                :, :, :, 0
-            ] = ftt_model.variables[variable_name]
+    ftt_model.store_output(ftt_yr_idx, ftt_model.scenarios)
 
     apply_fuel_demand_feedback(
         self, year, ftt_model, ftt_yr_idx, model_start, region_codes
