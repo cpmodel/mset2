@@ -13,6 +13,7 @@ ModelRun class: main class for operation of model.
 
 # Standard library imports
 import configparser
+import logging
 from pathlib import Path
 
 # Third party imports
@@ -22,12 +23,10 @@ from tqdm import tqdm
 from ftt_source.paths import set_paths
 from ftt_source.Power.ftt_p_main import solve as ftt_p_solve, build_power_settings
 
-# Support modules
-import MINDSET_FTT_Power.SourceCode.support.input_functions as in_f
-import MINDSET_FTT_Power.SourceCode.support.titles_functions as titles_f
-import MINDSET_FTT_Power.SourceCode.support.dimensions_functions as dims_f
-from MINDSET_FTT_Power.SourceCode.support.cross_section import cross_section as cs
-# from SourceCode.initialise_csv_files import initialise_csv_files
+from ftt_source.support.data_loading import load_data
+from ftt_source.support.titles_functions import load_titles
+from ftt_source.support.dimensions_functions import load_dims
+from ftt_source.support.cross_section import cross_section as cs
 
 
 class ModelRun:
@@ -67,7 +66,7 @@ class ModelRun:
         Years of the model timeline
     titles: dictionary of lists
         Dictionary containing all title classifications
-    dims: dict of tuples (str, str, str, str)
+    dims: dict of lists of str
         Variable classifications by dimension
     histend: dict of integers
         Final year of histrorical data by variable
@@ -110,39 +109,26 @@ class ModelRun:
         self.scenarios = scenario
 
         # Point FTT_Standalone at MINDSET's Utilities and settings (once at startup)
-        set_paths(utilities_path=str(_mindset_root / 'Utilities'))
+        set_paths(inputs_path=_mindset_root / 'Inputs', utilities_path=_mindset_root / 'Utilities')
         self.ftt_settings_path = _settings_ini
 
         # Load classification titles
-        self.titles = titles_f.load_titles()
+        self.titles = load_titles()
         self.power_settings = build_power_settings(self.titles, config)
 
         # Load variable dimensions
-        self.dims, self.histend, self.domain, self.forstart = dims_f.load_dims()
+        self.dims, self.histend, self.domain, self.forstart, self.units = load_dims()
 
-        # Retrieve inputs : C2TI size must match the CSV files at this point
-        self.input = in_f.load_data(self.titles, self.dims, self.timeline,
-                                    self.scenarios, self.ftt_modules,
-                                    self.forstart)
-
-        # After loading, extend BCET and C2TI so FTT_Standalone's ftt_p_lcoe can find
-        # '22 Gamma' (index 21) and '23 Value factor' (index 22) by name.
-        # The CSV data ends at '21 Gamma ($/MWh)' (index 20); we copy it to column 21
-        # and default Value factor to 1.0 for all technologies.
-        c2ti_list = list(self.titles['C2TI'])
-        gamma_col = c2ti_list.index('21 Gamma ($/MWh)')  # index 20
-        new_entries = [e for e in ('22 Gamma', '23 Value factor') if e not in c2ti_list]
-        if new_entries:
-            n_extra = len(new_entries)
-            for scen in self.input:
-                bcet = self.input[scen]['BCET']          # (RTI, T2TI, C2TI, 1)
-                extra = np.ones((bcet.shape[0], bcet.shape[1], n_extra, bcet.shape[3]))
-                extra[:, :, 0, :] = bcet[:, :, gamma_col, :]   # '22 Gamma' = copy of col 21
-                # '23 Value factor' stays 1.0
-                self.input[scen]['BCET'] = np.concatenate([bcet, extra], axis=2)
-            c2ti_list.extend(new_entries)
-            self.titles['C2TI'] = tuple(c2ti_list)
-
+        # Retrieve inputs; scenarios without input files fall back to S0
+        self.input = load_data(self.titles, self.dims, self.timeline,
+                               scenario, self.ftt_modules, self.forstart)
+        if scenario not in self.input:
+            logging.getLogger(__name__).warning(
+                "FTT:Power scenario '%s' has no input files; using S0 inputs.", scenario,
+            )
+            self.input[scenario] = {
+                var: values.copy() for var, values in self.input['S0'].items()
+            }
 
         # Initialize remaining attributes
         self.variables = {}
@@ -153,14 +139,14 @@ class ModelRun:
 
         # Carbon price coupling state (MSET-coupled mode only).
         # Written by ftt_power.py before each solve_year(); consumed in solve_year().
-        # Shape (n_reg, n_tech, 1) : one ctax per (region, technology) in USD2023/tCO2.
+        # Shape (n_reg,): one regional carbon price in USD2023/tCO2.
         self._mset_reppx = None
 
         # Fuel price coupling state (MSET-coupled mode only).
         # _mset_fuel_price_index_change is written by ftt_power.py before each solve_year() call.
         # _fpix_carry accumulates the cumulative price index across years.
         self._mset_fuel_price_index_change = None
-        self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI']), 1))
+        self._fpix_carry = np.ones((len(self.titles['RTI']), len(self.titles['T2TI'])))
 
     def run(self):
         """ Solve model run and save results """
@@ -196,11 +182,7 @@ class ModelRun:
                     pbar.update(1)
 
                     # Populate output container
-                    for var in self.variables:
-                        if 'TIME' in self.dims[var]:
-                            self.output[scen][var][:, :, :, y] = self.variables[var]
-                        else:
-                            self.output[scen][var][:, :, :, 0] = self.variables[var]
+                    self.store_output(y, scen)
 
             # Set the progress bar to say it's complete
             pbar.set_description(f"Model run {self.name} finished")
@@ -229,13 +211,7 @@ class ModelRun:
             # Overwrite BCET's '22 Gamma' column with MGAM before calling FTT_Standalone.
             if 'MGAM' in variables:
                 c2ti_m = {cat: idx for idx, cat in enumerate(self.titles['C2TI'])}
-                n_c2ti = len(self.titles['C2TI'])   # 23 after __init__ extension
-                for d in (variables, time_lags):
-                    if d['BCET'].shape[2] < n_c2ti:
-                        ext = np.ones((*d['BCET'].shape[:2], n_c2ti))
-                        ext[:, :, :d['BCET'].shape[2]] = d['BCET']
-                        d['BCET'] = ext
-                variables['BCET'][:, :, c2ti_m['22 Gamma']] = variables['MGAM'][:, :, 0]
+                variables['BCET'][:, :, c2ti_m['22 Gamma']] = variables['MGAM']
 
             # FPIX is cumulative fuel price index; _fpix_carry persists it. None = standalone (no change).
             fuel_price_index_change = self._mset_fuel_price_index_change if self._mset_fuel_price_index_change is not None else 0.0
@@ -255,6 +231,18 @@ class ModelRun:
             print("Incorrect selection of modules. Check settings.ini")
 
         return variables, time_lags
+
+    def store_output(self, y, scenario):
+        """Store solved variables for year index y in the output container."""
+        for variable, values in self.variables.items():
+            target = self.output[scenario][variable]
+            dimensions = self.dims[variable]
+            if 'TIME' in dimensions:
+                index = [slice(None)] * target.ndim
+                index[dimensions.index('TIME')] = y
+                target[tuple(index)] = values
+            else:
+                target[...] = values
 
     def update(self, year, y, scenario):
         """ Update model variables for a new year of solution """

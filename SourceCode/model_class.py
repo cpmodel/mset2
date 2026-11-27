@@ -367,25 +367,12 @@ class ModelRun:
             self.ftt_model.ftt_inv_converter = self.ftt_model.ftt_inv_converter.set_index('PROD_COMM')
             self.ftt_model.investment = dict()
 
-            # Fuel category -> technology indices mapping (static; cached once instead of
-            # rebuilt every run_ftt_year call).
-            # converters.csv uses numbered T2TI names matching titles['T2TI'] (converters.xlsx/ftt_t2ti_erti.csv use short names — wrong for this lookup)
-            _conv_csv = pd.read_csv(Path('MINDSET_FTT_Power/Utilities/titles/converters.csv'))
-            _t2ti_list = list(self.ftt_model.titles['T2TI'])
-            self.ftt_model.fuel_to_tech_idxs = {}
-            for _, row in _conv_csv.iterrows():
-                self.ftt_model.fuel_to_tech_idxs.setdefault(row['ERTI'], []).append(_t2ti_list.index(row['T2TI']))
-            
             for y, year in enumerate(setup_years):
                 # Solve year
                 self.ftt_model.variables, self.ftt_model.lags = self.ftt_model.solve_year(year, y, self.ftt_model.scenarios)
 
                 # Populate output container
-                for var in self.ftt_model.variables:
-                    if 'TIME' in self.ftt_model.dims[var]:
-                        self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, y] = self.ftt_model.variables[var]
-                    else:
-                        self.ftt_model.output[self.ftt_model.scenarios][var][:, :, :, 0] = self.ftt_model.variables[var]
+                self.ftt_model.store_output(y, self.ftt_model.scenarios)
 
                 # Assess investment
                 self.ftt_model.investment[year] = ftt_investment_by_mrio_sector(self.ftt_model, y)
